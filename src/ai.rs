@@ -101,7 +101,7 @@ async fn request(
             if drawing {
                 body["response_format"] = json!({"type":"json_object","schema":{
                 "type":"object","required":["advance","shapes"],"additionalProperties":false,
-                "properties":{"advance":{"type":"number","minimum":0,"maximum":2000},"shapes":{"type":"array","maxItems":12,"items":{
+                "properties":{"advance":{"type":"number","minimum":0,"maximum":2000},"shapes":{"type":"array","minItems":1,"maxItems":12,"items":{
                     "type":"object","additionalProperties":false,"required":["type","x","y","width","height","points","color","stroke","fill","opacity"],
                     "properties":{"type":{"type":"string","enum":["path","rect","ellipse"]},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number","minimum":1},"height":{"type":"number","minimum":1},"points":{"type":"array","maxItems":100,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"stroke":{"type":"number","minimum":0,"maximum":200},"fill":{"type":"boolean"},"opacity":{"type":"number","minimum":0,"maximum":1}}
                 }}}}});
@@ -210,6 +210,22 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
         data["advance"] = json!(g.artwork.advance)
     }
     let a: Artwork = serde_json::from_value(data).map_err(|_| "AI 그림 형식이 맞지 않아요.")?;
-    a.validate()?;
+    validate_candidate(&a)?;
     Ok(a)
+}
+
+/// A drawing request must produce something the user can actually preview.
+pub fn validate_candidate(artwork: &Artwork) -> Result<(), String> {
+    artwork.validate()?;
+    if artwork.shapes.is_empty()
+        || !crate::font::raster(artwork, 512)?
+            .pixels()
+            .any(|pixel| pixel[3] > 0)
+    {
+        return Err(
+            "AI가 보이는 그림을 반환하지 않았어요. 후보를 저장하지 않았습니다. 다시 만들어 주세요."
+                .into(),
+        );
+    }
+    Ok(())
 }

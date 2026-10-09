@@ -85,7 +85,10 @@ fn both_provider_contracts_preserve_exact_target() {
 }
 #[test]
 fn no_image_is_sent_without_reference_consent() {
-    let (url, rx) = mock("openai", r#"{"shapes":[]}"#);
+    let (url, rx) = mock(
+        "openai",
+        r#"{"shapes":[{"type":"path","points":[[100,800],[500,100],[900,800]]}]}"#,
+    );
     run(json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"},"sendReference":false})).unwrap();
     let request = rx.recv().unwrap();
     assert!(!request.contains("image_url"));
@@ -136,6 +139,52 @@ fn malformed_ai_does_not_panic() {
         json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"}}),
     );
     assert!(result.is_err());
+}
+#[test]
+fn empty_invisible_and_off_canvas_candidates_are_rejected() {
+    for answer in [
+        r#"{"shapes":[]}"#,
+        r#"{"shapes":[{"type":"path","points":[]}]}"#,
+        r#"{"shapes":[{"type":"path","points":[[100,100],[700,700]],"opacity":0}]}"#,
+        r#"{"shapes":[{"type":"path","points":[[100,100],[700,700]],"visible":false}]}"#,
+        r#"{"shapes":[{"type":"rect","x":2000,"y":2000,"width":100,"height":100,"fill":true}]}"#,
+    ] {
+        let (url, _rx) = mock("openai", answer);
+        let result = run(
+            json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"}}),
+        );
+        assert!(result.unwrap_err().contains("보이는 그림"));
+    }
+}
+#[test]
+fn drawing_action_returns_artwork_and_requires_nonempty_local_schema() {
+    let (url, rx) = mock(
+        "openai",
+        r#"{"shapes":[{"type":"path","points":[[100,800],[500,100],[900,800]]}]}"#,
+    );
+    let (tx, _status) = mpsc::channel();
+    let result = doodle_core::local_ai::run(
+        json!({"action":"generate","glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test","local":true}}),
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), tx,
+    ).unwrap();
+    assert!(result["artwork"]["shapes"]
+        .as_array()
+        .is_some_and(|s| !s.is_empty()));
+    assert!(result["answer"].is_null());
+    let request = rx.recv().unwrap();
+    let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(
+        body["response_format"]["schema"]["properties"]["shapes"]["minItems"],
+        1
+    );
+}
+#[test]
+fn explanation_cannot_succeed_as_a_drawing() {
+    let (url, _rx) = mock("openai", "둥근 획으로 그리면 좋아요.");
+    let result = run(
+        json!({"glyph":new_glyph("가","ko","hangul",false),"config":{"provider":"openai","endpoint":url,"model":"test"}}),
+    );
+    assert!(result.unwrap_err().contains("그림"));
 }
 #[test]
 fn missing_shape_dimensions_are_rejected() {

@@ -32,6 +32,8 @@
 - 앱은 Rust이며 추론에는 네이티브 C++ 실행기 **llama.cpp b11531**을 사용합니다. 숨겨진 프로세스가 임의의 localhost 포트와 매번 새 인증 키로 실행됩니다. 웹 UI는 끄고 필요한 모델을 순차 로드하며, 완료·취소 시 프로세스와 메모리를 정리합니다. 기본은 CPU 6스레드/8K 문맥입니다.
 - 이미지 입력은 현재 글리프의 512×512 PNG입니다. 다른 앱 화면을 캡처하지 않습니다. API 모드에서는 그림 전송 체크박스를 켰을 때만 PNG와 벡터를 보냅니다. AI 사용 권한이 없는 원본·부품은 로컬에서도 사용하지 않습니다.
 
+**글리프 자동 그리기:** 글자를 고른 뒤 하단에서 **후보 만들기 → 그림 생성**을 누릅니다. 생성이 끝나면 **현재 그림 / 선택한 AI 후보** 비교 화면이 자동으로 열립니다. 후보를 골라 **이 후보 채택**을 누르면 편집 화면에 적용하며 실행 취소도 가능합니다. 창을 닫아도 후보는 보존되고, 하단의 **저장된 후보 N개 보기 · 채택** 또는 글리프 속성 상단의 **AI 후보 N개 보기 · 채택**에서 다시 열 수 있습니다. AI 연결 화면에서 생성해도 같은 비교 화면이 열립니다. 설명만 반환되거나 보이는 도형이 없는 응답은 생성 성공으로 처리하지 않습니다.
+
 `cargo run --locked --bin verify_ai`로 실제 로컬 텍스트·이미지 입력과 768차원 응답, 생성 모델의 답변을 검증할 수 있습니다. `-- --generate`는 그림 후보 생성을 검증합니다. 자세한 모델 사양은 [EmbeddingGemma 2](https://huggingface.co/google/embeddinggemma-2), [Gemma 4 E2B](https://huggingface.co/google/gemma-4-E2B-it)에 있습니다.
 
 ## 폰트 출력
@@ -59,6 +61,8 @@ cargo run --locked
 cargo test --locked
 cargo run --release --locked --bin verify -- --large
 pwsh -File scripts/ui-qa.ps1
+# 설치된 로컬 모델로 실제 그림 생성과 후보 창까지 확인
+pwsh -File scripts/ui-qa.ps1 -LocalAi
 pwsh -File scripts/package.ps1
 ```
 

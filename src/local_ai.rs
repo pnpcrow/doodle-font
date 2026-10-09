@@ -198,7 +198,11 @@ pub fn run(
                 let assistant = Server::start(false, &cancel).await?;
                 payload["config"] = json!({"provider":"openai","endpoint":assistant.endpoint,"model":"local","key":assistant.key,"local":true});
                 payload["sendReference"] = json!(true);
-                let _ = status.send("그림을 확인하고 답변 작성 중".into());
+                let _ = status.send(if payload["action"] == "generate" {
+                    "그림 후보를 그리는 중"
+                } else {
+                    "그림을 확인하고 답변 작성 중"
+                }.into());
                 let mut result = perform(payload).await?;
                 result["embedding"] = embedding_value;
                 result["matches"] = json!(matches);

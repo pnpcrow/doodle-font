@@ -15,7 +15,7 @@ const LINE: Color32 = Color32::from_rgb(226, 227, 217);
 type JobResult = Result<Job, String>;
 enum Job {
     Export(font::ExportResult, Option<PathBuf>),
-    AiReply(String, serde_json::Value),
+    AiReply(String, bool, serde_json::Value),
     LocalAiInstalled,
     FontPreview(Vec<u8>, String),
     Imported(Project),
@@ -78,6 +78,7 @@ pub struct Studio {
     ai_color: bool,
     ai_action: bool,
     ai_answer: String,
+    candidate_review: Option<(String, String)>,
     ai_status: String,
     ai_started: Instant,
     ai_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
@@ -104,6 +105,10 @@ pub struct Studio {
     qa_canvas: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_install_button: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_candidate_accept: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_ai_send: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -217,6 +222,7 @@ impl Studio {
             ai_color: true,
             ai_action: false,
             ai_answer: String::new(),
+            candidate_review: None,
             ai_status: String::new(),
             ai_started: Instant::now(),
             ai_cancel: None,
@@ -243,6 +249,10 @@ impl Studio {
             qa_canvas: None,
             #[cfg(feature = "ui-qa")]
             qa_install_button: None,
+            #[cfg(feature = "ui-qa")]
+            qa_candidate_accept: None,
+            #[cfg(feature = "ui-qa")]
+            qa_ai_send: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -417,6 +427,7 @@ impl Studio {
                     if was_installing {
                         self.local_installed = doodle_core::local_ai::installed();
                     }
+                    let was_ai = self.ai_cancel.is_some() && !was_installing;
                     let cancelled = self
                         .ai_cancel
                         .take()
@@ -431,12 +442,16 @@ impl Studio {
                             return;
                         }
                         self.notify("AI 작업을 취소했어요. 편집을 계속할 수 있어요.");
+                        self.ai_answer =
+                            "AI 작업을 취소했어요. 새 후보는 저장하지 않았습니다.".into();
                         return;
                     }
                     match result {
                         Err(e) => {
                             if was_installing {
                                 self.install_error = e.clone();
+                            } else if was_ai {
+                                self.ai_answer = format!("AI 작업을 완료하지 못했어요.\n{e}");
                             }
                             self.notify(e)
                         }
@@ -447,34 +462,25 @@ impl Studio {
                                 "로컬 AI 설치를 마쳤어요. 하단 입력창에서 바로 사용할 수 있어요.",
                             );
                         }
-                        Ok(Job::AiReply(id, result)) => {
-                            if let Some(answer) = result["answer"].as_str() {
-                                self.ai_answer = answer.to_owned();
-                            }
-                            if let Ok(artwork) =
-                                serde_json::from_value::<Artwork>(result["artwork"].clone())
-                            {
-                                if let Some(g) = self.project.glyphs.iter_mut().find(|g| g.id == id)
-                                {
-                                    if !g.locked
-                                        && !["blank", "unsupported"].contains(&g.status.as_str())
-                                        && g.candidates.len() < 50
-                                    {
-                                        g.candidates.push(Candidate {
-                                            id: uid(),
-                                            name: format!("AI 후보 {}", g.candidates.len() + 1),
-                                            artwork,
-                                        });
-                                        self.ai_answer="그림 후보를 만들었어요. 오른쪽 AI 후보에서 비교하고 채택해 주세요.".into();
-                                        self.changed();
-                                    }
+                        Ok(Job::AiReply(id, drawing, result)) => {
+                            match self.receive_ai_reply(&id, drawing, result) {
+                                Ok(()) => self.notify(if drawing {
+                                    "그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요."
+                                } else {
+                                    "그림 상담을 마쳤어요."
+                                }),
+                                Err(e) => {
+                                    self.ai_answer = format!(
+                                        "{}\n{e}",
+                                        if drawing {
+                                            "후보를 만들지 못했어요."
+                                        } else {
+                                            "그림 상담을 완료하지 못했어요."
+                                        }
+                                    );
+                                    self.notify(e);
                                 }
                             }
-                            if let Some(matches) = result["matches"].as_str() {
-                                self.ai_answer
-                                    .push_str(&format!("\n\n참고 그림 비교: {matches}"));
-                            }
-                            self.notify("AI 작업을 마쳤어요. 편집을 계속할 수 있어요.");
                         }
                         Ok(Job::Export(r, path)) => {
                             self.export_report = r
@@ -517,6 +523,9 @@ impl Studio {
                     }
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    if self.ai_cancel.is_some() && !self.installing_ai {
+                        self.ai_answer = "AI 작업이 중단되었어요. 다시 요청해 주세요.".into();
+                    }
                     self.job = None;
                     self.ai_cancel = None;
                     self.ai_progress = None;
@@ -1017,6 +1026,7 @@ impl Studio {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("글리프 속성").size(17.).strong());
                     });
+                    let candidate_count = g.candidates.len();
                     ui.add_space(12.);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(display(&text)).size(30.));
@@ -1042,6 +1052,13 @@ impl Studio {
                             _ => "단일 유니코드 문자",
                         },
                     );
+                    if candidate_count > 0
+                        && ui
+                            .button(format!("AI 후보 {candidate_count}개 보기 · 채택"))
+                            .clicked()
+                    {
+                        self.open_candidate_review();
+                    }
                     ui.add_space(7.);
                     if ui.checkbox(&mut locked, "글리프 잠금").changed() {
                         self.edit(|g| {
@@ -1424,6 +1441,9 @@ impl Studio {
                             .clicked()
                         {
                             self.generate_ai(ui.ctx());
+                        }
+                        if ui.button("후보 비교 화면 열기").clicked() {
+                            self.open_candidate_review();
                         }
                         let candidates: Vec<_> = self.project.glyphs[self.selected]
                             .candidates
@@ -2066,6 +2086,177 @@ impl Studio {
     fn generate_ai(&mut self, ctx: &egui::Context) {
         self.start_ai(ctx, true);
     }
+    fn receive_ai_reply(
+        &mut self,
+        id: &str,
+        drawing: bool,
+        result: serde_json::Value,
+    ) -> Result<(), String> {
+        if drawing {
+            let artwork: Artwork =
+                serde_json::from_value(result["artwork"].clone()).map_err(|_| {
+                    "AI가 그림 후보를 반환하지 않았어요. 설명만 있는 응답은 채택할 수 없습니다."
+                })?;
+            doodle_core::ai::validate_candidate(&artwork)?;
+            let g = self
+                .project
+                .glyphs
+                .iter_mut()
+                .find(|g| g.id == id)
+                .ok_or("후보를 저장할 글리프를 찾을 수 없어요.")?;
+            if !editable(g) || matches!(g.status.as_str(), "blank" | "unsupported") {
+                return Err("잠금·빈칸·미지원 항목에는 후보를 저장할 수 없어요.".into());
+            }
+            if g.candidates.len() >= 50 {
+                return Err("이 글리프의 AI 후보가 50개여서 새 후보를 저장할 수 없어요.".into());
+            }
+            let candidate = Candidate {
+                id: uid(),
+                name: format!("AI 후보 {}", g.candidates.len() + 1),
+                artwork,
+            };
+            self.candidate_review = Some((id.to_owned(), candidate.id.clone()));
+            g.candidates.push(candidate);
+            self.ai_answer = format!(
+                "‘{}’의 그림 후보를 만들었어요. 후보 보기에서 비교하고 채택해 주세요.",
+                g.text
+            );
+            self.changed();
+        } else {
+            self.ai_answer = result["answer"]
+                .as_str()
+                .filter(|s| !s.trim().is_empty())
+                .ok_or("AI 상담 응답이 비어 있어요.")?
+                .to_owned();
+        }
+        if let Some(matches) = result["matches"].as_str().filter(|s| !s.is_empty()) {
+            self.ai_answer
+                .push_str(&format!("\n\n참고 그림 비교: {matches}"));
+        }
+        Ok(())
+    }
+    fn open_candidate_review(&mut self) {
+        if let Some(g) = self.project.glyphs.get(self.selected) {
+            if let Some(candidate) = g.candidates.last() {
+                self.candidate_review = Some((g.id.clone(), candidate.id.clone()));
+            } else {
+                self.notify("아직 저장된 후보가 없어요. 후보 만들기로 그림을 생성해 주세요.");
+            }
+        }
+    }
+    fn candidate_review_ui(&mut self, ctx: &egui::Context) {
+        if self.ai_cancel.is_some() {
+            return;
+        }
+        let Some((glyph_id, mut candidate_id)) = self.candidate_review.clone() else {
+            return;
+        };
+        let Some(index) = self.project.glyphs.iter().position(|g| g.id == glyph_id) else {
+            self.candidate_review = None;
+            return;
+        };
+        let g = &self.project.glyphs[index];
+        let mut apply = false;
+        let mut close = false;
+        let modal = egui::Modal::new("ai-candidate-review".into()).show(ctx, |ui| {
+            ui.set_width(620.);
+            ui.horizontal(|ui| {
+                ui.heading(format!("‘{}’ AI 후보", display(&g.text)));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    close = ui.button("닫기").clicked();
+                });
+            });
+            ui.label("그림을 비교하고 채택해 주세요. 채택 전에는 현재 그림이 바뀌지 않습니다.");
+            egui::ScrollArea::horizontal()
+                .id_salt("candidate-choices")
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        for candidate in &g.candidates {
+                            ui.selectable_value(
+                                &mut candidate_id,
+                                candidate.id.clone(),
+                                &candidate.name,
+                            );
+                        }
+                    });
+                });
+            if let Some(candidate) = g.candidates.iter().find(|c| c.id == candidate_id) {
+                ui.columns(2, |columns| {
+                    for (column, (label, artwork, key)) in columns.iter_mut().zip([
+                        (
+                            "현재 그림",
+                            &g.artwork,
+                            format!("review-current-{glyph_id}"),
+                        ),
+                        (
+                            "선택한 AI 후보",
+                            &candidate.artwork,
+                            format!("review-{candidate_id}"),
+                        ),
+                    ]) {
+                        column.label(RichText::new(label).strong());
+                        let size = column
+                            .available_width()
+                            .min((ctx.content_rect().height() - 310.).clamp(160., 280.));
+                        let (rect, _) =
+                            column.allocate_exact_size(Vec2::splat(size), Sense::hover());
+                        column.painter().rect_filled(rect, 8., Color32::WHITE);
+                        paint_art(
+                            ctx,
+                            column.painter(),
+                            rect.shrink(10.),
+                            artwork,
+                            &key,
+                            self.revision,
+                            &mut self.textures,
+                        );
+                    }
+                });
+                ui.add_space(8.);
+                let can_apply =
+                    editable(g) && !matches!(g.status.as_str(), "blank" | "unsupported");
+                let response = ui.add_enabled(
+                    can_apply,
+                    egui::Button::new("이 후보 채택").fill(Color32::from_rgb(245, 220, 200)),
+                );
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_candidate_accept = Some(response.rect);
+                }
+                apply = response.clicked();
+                if !can_apply {
+                    ui.label("잠금·빈칸·미지원 상태를 해제한 뒤 채택할 수 있어요.");
+                }
+            } else {
+                ui.label("선택한 후보가 없어요. 위에서 다른 후보를 골라 주세요.");
+            }
+        });
+        self.candidate_review = if close || modal.should_close() {
+            None
+        } else {
+            Some((glyph_id, candidate_id.clone()))
+        };
+        if apply {
+            self.selected = index;
+            self.group = GROUPS
+                .iter()
+                .position(|entry| entry.0 == self.project.glyphs[index].group)
+                .unwrap_or(self.group);
+            self.refresh_catalog();
+            let mut accepted = false;
+            self.edit(|g| {
+                accept(g, &candidate_id)?;
+                accepted = true;
+                Ok(())
+            });
+            if accepted {
+                self.tab = 0;
+                self.layer = None;
+                self.candidate_review = None;
+                self.notify("AI 후보를 적용했어요. 실행 취소로 이전 그림으로 돌아갈 수 있어요.");
+            }
+        }
+    }
     fn install_ai(&mut self, ctx: &egui::Context) {
         if self.job.is_some() {
             return;
@@ -2113,12 +2304,20 @@ impl Studio {
             self.notify("먼저 작업할 글리프를 선택해 주세요.");
             return;
         };
+        if drawing && g.candidates.len() >= 50 {
+            self.ai_answer = "이 글리프의 AI 후보가 50개여서 새 후보를 만들 수 없어요.".into();
+            self.notify(self.ai_answer.clone());
+            return;
+        }
         let id = g.id.clone();
         let payload = serde_json::json!({"glyph":g,"action":if drawing{"generate"}else{"assist"},"config":{"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key},"prompt":self.ai_prompt,"sendReference":self.send_reference || self.api_provider=="local","colorMode":if self.ai_color{"color"}else{"mono"},"references":self.project.templates.iter().filter(|t|t.permissions.ai && t.permissions.display && t.original.is_some()).take(8).collect::<Vec<_>>()});
         if let Err(e) = doodle_core::ai::validate_target(&payload, drawing) {
             self.notify(e);
             return;
         }
+        self.ai_action = drawing;
+        self.ai_answer.clear();
+        self.candidate_review = None;
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.ai_cancel = Some(cancel.clone());
         self.ai_started = Instant::now();
@@ -2133,7 +2332,7 @@ impl Studio {
             }
         });
         self.spawn(ctx, move || {
-            doodle_core::local_ai::run(payload, cancel, tx).map(|r| Job::AiReply(id, r))
+            doodle_core::local_ai::run(payload, cancel, tx).map(|r| Job::AiReply(id, drawing, r))
         });
     }
     fn ai_dock(&mut self, ctx: &egui::Context) {
@@ -2210,6 +2409,18 @@ impl Studio {
                         ui.selectable_value(&mut self.ai_action, false, "그림 상담");
                         ui.selectable_value(&mut self.ai_action, true, "후보 만들기");
                     });
+                    let candidate_count = self
+                        .project
+                        .glyphs
+                        .get(self.selected)
+                        .map_or(0, |g| g.candidates.len());
+                    if candidate_count > 0
+                        && ui
+                            .button(format!("저장된 후보 {candidate_count}개 보기 · 채택"))
+                            .clicked()
+                    {
+                        self.open_candidate_review();
+                    }
                     if !self.ai_answer.is_empty() {
                         egui::ScrollArea::vertical()
                             .id_salt("ai-answer")
@@ -2221,18 +2432,29 @@ impl Studio {
                     ui.horizontal(|ui| {
                         ui.add_sized(
                             [ui.available_width() - 85., 46.],
-                            egui::TextEdit::multiline(&mut self.ai_prompt)
-                                .hint_text("이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?"),
+                            egui::TextEdit::multiline(&mut self.ai_prompt).hint_text(
+                                if self.ai_action {
+                                    "이 글자를 굵고 둥근 손글씨로 그려줘."
+                                } else {
+                                    "이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?"
+                                },
+                            ),
                         );
-                        if ui
-                            .add_enabled(
-                                self.job.is_none() && !self.ai_prompt.trim().is_empty(),
-                                egui::Button::new("보내기")
-                                    .min_size(Vec2::new(70., 46.))
-                                    .fill(Color32::from_rgb(245, 220, 200)),
-                            )
-                            .clicked()
+                        let send = ui.add_enabled(
+                            self.job.is_none() && !self.ai_prompt.trim().is_empty(),
+                            egui::Button::new(if self.ai_action {
+                                "그림 생성"
+                            } else {
+                                "상담하기"
+                            })
+                            .min_size(Vec2::new(70., 46.))
+                            .fill(Color32::from_rgb(245, 220, 200)),
+                        );
+                        #[cfg(feature = "ui-qa")]
                         {
+                            self.qa_ai_send = Some(send.rect);
+                        }
+                        if send.clicked() {
                             self.start_ai(ctx, self.ai_action);
                         }
                     });
@@ -2539,6 +2761,29 @@ fn shape_bounds(s: &Shape) -> [f64; 4] {
 impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if ["ai-candidate-live", "ai-candidate-accept"].contains(&qa_view.as_str()) {
+            input
+                .events
+                .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
+            let (rect, press_frame) = if qa_view == "ai-candidate-live" {
+                (self.qa_ai_send, 3)
+            } else {
+                (self.qa_candidate_accept, 5)
+            };
+            let frame = ctx.cumulative_frame_nr();
+            if let Some(rect) = rect.filter(|_| frame == press_frame || frame == press_frame + 1) {
+                let pos = rect.center();
+                input.events.push(egui::Event::PointerMoved(pos));
+                input.events.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == press_frame,
+                    modifiers: Default::default(),
+                });
+            }
+            return;
+        }
         if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow") {
             input
                 .events
@@ -2610,6 +2855,54 @@ impl eframe::App for Studio {
                     "ai-ready" => {
                         self.local_installed = true;
                     }
+                    "ai-candidates" | "ai-candidate-accept" | "ai-candidate-invalid" => {
+                        self.tab = 3;
+                        self.local_installed = true;
+                        let (tx, rx) = mpsc::channel();
+                        self.job = Some(rx);
+                        self.ai_cancel = Some(std::sync::Arc::new(
+                            std::sync::atomic::AtomicBool::new(false),
+                        ));
+                        let invalid = std::env::var("DOODLE_QA_VIEW").as_deref()
+                            == Ok("ai-candidate-invalid");
+                        let result = if invalid {
+                            serde_json::json!({"answer":"설명만 반환된 응답"})
+                        } else {
+                            serde_json::json!({"artwork":self.project.glyphs[1].artwork})
+                        };
+                        tx.send(Ok(Job::AiReply(
+                            self.project.glyphs[0].id.clone(),
+                            true,
+                            result,
+                        )))
+                        .unwrap();
+                        self.poll();
+                        assert!(self.ai_cancel.is_none());
+                        assert_eq!(
+                            self.project.glyphs[0].candidates.len(),
+                            usize::from(!invalid)
+                        );
+                        assert_eq!(self.candidate_review.is_some(), !invalid);
+                        assert_eq!(
+                            self.project.glyphs[0].artwork.shapes.len(),
+                            2,
+                            "generation must not apply automatically"
+                        );
+                        if invalid {
+                            assert!(self.ai_answer.contains("후보를 만들지 못했어요"));
+                        }
+                    }
+                    "ai-candidate-existing" => self.open_candidate_review(),
+                    "ai-candidate-live" => {
+                        self.tab = 3;
+                        self.selected = 1;
+                        self.ai_action = true;
+                        self.ai_prompt = "참고 그림처럼 노란 원 안에 검은 눈 두 개와 웃는 입이 있는 얼굴을 만들어 줘.".into();
+                        assert!(
+                            self.local_installed,
+                            "live test needs installed local models"
+                        );
+                    }
                     "ai-busy" | "ai-recover" => {
                         self.local_installed = true;
                         self.ai_cancel = Some(std::sync::Arc::new(
@@ -2626,6 +2919,40 @@ impl eframe::App for Studio {
                 }
             }
             ctx.request_repaint();
+            if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-candidate-accept")
+                && ctx.cumulative_frame_nr() == 10
+            {
+                assert!(
+                    self.candidate_review.is_none(),
+                    "click should apply and close review"
+                );
+                assert_eq!(self.tab, 0, "accept should return to editor from settings");
+                let glyph = &self.project.glyphs[0];
+                assert_eq!(
+                    serde_json::to_value(&glyph.artwork).unwrap(),
+                    serde_json::to_value(&glyph.candidates[0].artwork).unwrap()
+                );
+                self.undo(false);
+                assert_eq!(self.project.glyphs[0].artwork.shapes.len(), 2);
+                self.undo(true);
+                assert_eq!(
+                    self.project.glyphs[0].artwork.shapes.len(),
+                    self.project.glyphs[1].artwork.shapes.len()
+                );
+                self.save();
+                assert_eq!(
+                    storage::read(&self.save_path).unwrap().glyphs[0]
+                        .candidates
+                        .len(),
+                    1
+                );
+                self.open_candidate_review();
+                assert!(
+                    self.candidate_review.is_some(),
+                    "saved candidates must reopen"
+                );
+                self.notify("후보 UI QA: 채택 · 실행 취소 · 다시 실행 · 저장 · 다시 열기 통과");
+            }
             if ["ai-busy", "ai-recover"]
                 .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str())
                 && ctx.cumulative_frame_nr() == 8
@@ -2692,10 +3019,28 @@ impl eframe::App for Studio {
                 self.notify("UI 자동 검증 통과: 그리기 · 실행 취소 · 다시 실행 · 원본 보존 · 저장");
             }
             let install_flow = std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow");
+            let candidate_live =
+                std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-candidate-live");
+            if candidate_live && self.ai_started.elapsed() > Duration::from_secs(420) {
+                panic!("Local candidate UI timed out: {}", self.ai_status);
+            }
+            if candidate_live && ctx.cumulative_frame_nr() > 12 && self.job.is_none() {
+                assert!(
+                    self.candidate_review.is_some(),
+                    "local drawing must open candidate review: {}",
+                    self.ai_answer
+                );
+                assert_eq!(self.project.glyphs[1].candidates.len(), 1);
+                self.save();
+            }
             if install_flow && self.ai_started.elapsed() > Duration::from_secs(90) {
                 panic!("Install UI flow timed out: {}", self.install_error);
             }
-            if (ctx.cumulative_frame_nr() == 12 && !install_flow)
+            if (ctx.cumulative_frame_nr() == 12 && !install_flow && !candidate_live)
+                || (candidate_live
+                    && ctx.cumulative_frame_nr() > 12
+                    && self.job.is_none()
+                    && self.candidate_review.is_some())
                 || (install_flow
                     && ctx.cumulative_frame_nr() >= 12
                     && self.local_installed
@@ -2751,11 +3096,22 @@ impl eframe::App for Studio {
         self.footer(ctx);
         if self.ai_ready() {
             egui::TopBottomPanel::bottom("ai-space")
-                .exact_height(if self.ai_answer.is_empty() {
-                    112.
-                } else {
-                    252.
-                })
+                .exact_height(
+                    (if self.ai_answer.is_empty() {
+                        112.
+                    } else {
+                        252.
+                    }) + if self
+                        .project
+                        .glyphs
+                        .get(self.selected)
+                        .is_some_and(|g| !g.candidates.is_empty())
+                    {
+                        40.
+                    } else {
+                        0.
+                    },
+                )
                 .frame(egui::Frame::new().fill(PAPER))
                 .show(ctx, |_| {});
         }
@@ -2801,7 +3157,11 @@ impl eframe::App for Studio {
                         });
                 });
         }
-        if self.ai_cancel.is_none() && !ctx.wants_keyboard_input() {
+        self.candidate_review_ui(ctx);
+        if self.ai_cancel.is_none()
+            && self.candidate_review.is_none()
+            && !ctx.wants_keyboard_input()
+        {
             if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::Z)) {
                 self.undo(false)
             }
