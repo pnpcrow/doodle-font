@@ -13,14 +13,26 @@ use std::{
 
 pub fn root() -> PathBuf {
     std::env::var_os("DOODLE_AI_DIR")
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default())
-                .join("DoodleFont/ai")
+            PathBuf::from(
+                std::env::var_os("LOCALAPPDATA")
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| {
+                        PathBuf::from(std::env::var_os("USERPROFILE").unwrap_or_default())
+                            .join("AppData/Local")
+                            .into_os_string()
+                    }),
+            )
+            .join("DoodleFont/ai")
         })
 }
 fn executable() -> PathBuf {
-    let dir = root().join("runtime");
+    executable_at(&root())
+}
+pub(crate) fn executable_at(root: &std::path::Path) -> PathBuf {
+    let dir = root.join("runtime");
     if dir.join("llama-server.exe").exists() {
         return dir.join("llama-server.exe");
     }
@@ -34,16 +46,7 @@ fn executable() -> PathBuf {
         .unwrap_or_else(|| dir.join("llama-server.exe"))
 }
 pub fn installed() -> bool {
-    executable().is_file()
-        && [
-            "embedding.gguf",
-            "embedding-vision.gguf",
-            "assistant.gguf",
-            "assistant-vision.gguf",
-            "installed.json",
-        ]
-        .iter()
-        .all(|f| root().join(f).is_file())
+    crate::ai_install::missing(&root()).is_empty()
 }
 struct Server {
     child: Child,
@@ -59,9 +62,7 @@ impl Drop for Server {
 impl Server {
     async fn start(embedding: bool, cancel: &AtomicBool) -> Result<Self, String> {
         if !installed() {
-            return Err(
-                "로컬 AI 설치가 필요해요. scripts/install-local-ai.ps1을 실행해 주세요.".into(),
-            );
+            return Err("AI 연결 화면에서 '로컬 AI 설치'를 눌러 주세요.".into());
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
