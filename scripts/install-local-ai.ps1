@@ -1,20 +1,16 @@
 param([string]$Destination = (Join-Path $env:LOCALAPPDATA 'DoodleFont\ai'))
 $ErrorActionPreference = 'Stop'
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-$files = @(
-    @{Name='runtime.zip'; Url='https://github.com/ggml-org/llama.cpp/releases/download/b11531/llama-b11531-bin-win-vulkan-x64.zip'; Hash='e6b751b1678cb2a2503a98d974e14f5a18ab534f56f16660882ab310efe75ff6'},
-    @{Name='embedding.gguf'; Url='https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/bfcd298762cc34d0357ece5ebdd31791a3a374d8/embeddinggemma-2-Q8_0.gguf'; Hash='2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135'},
-    @{Name='embedding-vision.gguf'; Url='https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/bfcd298762cc34d0357ece5ebdd31791a3a374d8/mmproj-embeddinggemma-2-Q8_0.gguf'; Hash='c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f'},
-    @{Name='assistant.gguf'; Url='https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/b4243c156154b6dca9324415f8c7ccc098b4aed1/gemma-4-E2B-it-Q4_0.gguf'; Hash='8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52'},
-    @{Name='assistant-vision.gguf'; Url='https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/b4243c156154b6dca9324415f8c7ccc098b4aed1/mmproj-gemma-4-E2B-it-Q8_0.gguf'; Hash='9406f99c16d68cda4f1f0552192dcc99021ea1fc6d2fd50b1dc3ccf30d04b292'}
-)
+$manifestPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'assets/local-ai-manifest.json'
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$files = $manifest.files
 foreach ($item in $files) {
     $path = Join-Path $Destination $item.Name
-    if ((Test-Path -LiteralPath $path) -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $item.Hash) { continue }
+    if ((Test-Path -LiteralPath $path) -and (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -eq $item.sha256) { continue }
     Write-Output ('Downloading ' + $item.Name)
     & curl.exe --fail --location --silent --show-error --retry 3 --connect-timeout 30 --speed-limit 1024 --speed-time 120 --continue-at - --output ($path + '.partial') $item.Url
     if ($LASTEXITCODE -ne 0) { throw ('Download failed: ' + $item.Name) }
-    if ((Get-FileHash -LiteralPath ($path + '.partial') -Algorithm SHA256).Hash -ne $item.Hash) { throw ('SHA256 mismatch: ' + $item.Name) }
+    if ((Get-FileHash -LiteralPath ($path + '.partial') -Algorithm SHA256).Hash -ne $item.sha256) { throw ('SHA256 mismatch: ' + $item.Name) }
     Move-Item -LiteralPath ($path + '.partial') -Destination $path -Force
 }
 Expand-Archive -LiteralPath (Join-Path $Destination 'runtime.zip') -DestinationPath (Join-Path $Destination 'runtime') -Force

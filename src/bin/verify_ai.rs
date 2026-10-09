@@ -2,6 +2,13 @@ use doodle_core::{document, local_ai};
 use serde_json::json;
 use std::sync::{atomic::AtomicBool, mpsc, Arc};
 fn main() {
+    if std::env::args().any(|a| a == "--diagnose") {
+        println!(
+            "{}",
+            json!({"root":local_ai::root(),"installed":local_ai::installed(),"missing":doodle_core::ai_install::missing(&local_ai::root())})
+        );
+        return;
+    }
     let project = document::new_project();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {

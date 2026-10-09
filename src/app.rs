@@ -16,6 +16,7 @@ type JobResult = Result<Job, String>;
 enum Job {
     Export(font::ExportResult, Option<PathBuf>),
     AiReply(String, serde_json::Value),
+    LocalAiInstalled,
     FontPreview(Vec<u8>, String),
     Imported(Project),
 }
@@ -83,6 +84,11 @@ pub struct Studio {
     ai_progress: Option<mpsc::Receiver<String>>,
     local_installed: bool,
     close_after_ai: bool,
+    installing_ai: bool,
+    install_error: String,
+    install_progress: Option<mpsc::Receiver<doodle_core::ai_install::Progress>>,
+    install_fraction: f32,
+    last_install_check: Instant,
     job: Option<mpsc::Receiver<JobResult>>,
     component_name: String,
     template_provider: String,
@@ -96,6 +102,8 @@ pub struct Studio {
     variant_targets: std::collections::HashSet<String>,
     #[cfg(feature = "ui-qa")]
     qa_canvas: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_install_button: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -215,6 +223,11 @@ impl Studio {
             ai_progress: None,
             local_installed: doodle_core::local_ai::installed(),
             close_after_ai: false,
+            installing_ai: false,
+            install_error: String::new(),
+            install_progress: None,
+            install_fraction: 0.,
+            last_install_check: Instant::now(),
             job: None,
             component_name: "나의 부품".into(),
             template_provider: "사용자 가져오기".into(),
@@ -228,6 +241,8 @@ impl Studio {
             variant_targets: Default::default(),
             #[cfg(feature = "ui-qa")]
             qa_canvas: None,
+            #[cfg(feature = "ui-qa")]
+            qa_install_button: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -382,6 +397,12 @@ impl Studio {
         });
     }
     fn poll(&mut self) {
+        if let Some(rx) = &self.install_progress {
+            while let Ok(p) = rx.try_recv() {
+                self.ai_status = p.message;
+                self.install_fraction = p.fraction;
+            }
+        }
         if let Some(rx) = &self.ai_progress {
             while let Ok(status) = rx.try_recv() {
                 self.ai_status = status;
@@ -391,17 +412,41 @@ impl Studio {
             match rx.try_recv() {
                 Ok(result) => {
                     self.job = None;
+                    let was_installing = std::mem::take(&mut self.installing_ai);
+                    self.install_progress = None;
+                    if was_installing {
+                        self.local_installed = doodle_core::local_ai::installed();
+                    }
                     let cancelled = self
                         .ai_cancel
                         .take()
                         .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed));
                     self.ai_progress = None;
                     if cancelled {
+                        if was_installing {
+                            self.install_error =
+                                "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다."
+                                    .into();
+                            self.notify(self.install_error.clone());
+                            return;
+                        }
                         self.notify("AI 작업을 취소했어요. 편집을 계속할 수 있어요.");
                         return;
                     }
                     match result {
-                        Err(e) => self.notify(e),
+                        Err(e) => {
+                            if was_installing {
+                                self.install_error = e.clone();
+                            }
+                            self.notify(e)
+                        }
+                        Ok(Job::LocalAiInstalled) => {
+                            self.local_installed = doodle_core::local_ai::installed();
+                            self.install_error.clear();
+                            self.notify(
+                                "로컬 AI 설치를 마쳤어요. 하단 입력창에서 바로 사용할 수 있어요.",
+                            );
+                        }
                         Ok(Job::AiReply(id, result)) => {
                             if let Some(answer) = result["answer"].as_str() {
                                 self.ai_answer = answer.to_owned();
@@ -475,6 +520,13 @@ impl Studio {
                     self.job = None;
                     self.ai_cancel = None;
                     self.ai_progress = None;
+                    if self.installing_ai {
+                        self.installing_ai = false;
+                        self.install_progress = None;
+                        self.install_error =
+                            "설치 작업이 중단되었어요. 다시 설치를 눌러 이어서 진행해 주세요."
+                                .into();
+                    }
                     self.notify("작업 스레드가 종료되었어요. 프로젝트는 유지됩니다.");
                 }
                 Err(_) => {}
@@ -2014,6 +2066,31 @@ impl Studio {
     fn generate_ai(&mut self, ctx: &egui::Context) {
         self.start_ai(ctx, true);
     }
+    fn install_ai(&mut self, ctx: &egui::Context) {
+        if self.job.is_some() {
+            return;
+        }
+        self.install_error.clear();
+        self.installing_ai = true;
+        self.install_fraction = 0.;
+        self.ai_started = Instant::now();
+        self.ai_status = "로컬 AI 설치 준비 중".into();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.ai_cancel = Some(cancel.clone());
+        self.draft = None;
+        self.drag_start = None;
+        ctx.memory_mut(|m| {
+            if let Some(id) = m.focused() {
+                m.surrender_focus(id);
+            }
+        });
+        let (tx, rx) = mpsc::channel();
+        self.install_progress = Some(rx);
+        let root = doodle_core::local_ai::root();
+        self.spawn(ctx, move || {
+            doodle_core::ai_install::install(root, cancel, tx).map(|()| Job::LocalAiInstalled)
+        });
+    }
     fn ai_ready(&self) -> bool {
         if self.api_provider == "local" {
             self.local_installed
@@ -2101,10 +2178,17 @@ impl Studio {
                             }
                         });
                     });
+                    if self.installing_ai {
+                        ui.add(egui::ProgressBar::new(self.install_fraction).show_percentage());
+                    }
                     ui.label(
-                        RichText::new("작업 중에는 화면 입력과 편집이 잠깁니다.")
-                            .size(12.)
-                            .color(MUTED),
+                        RichText::new(if self.installing_ai {
+                            "최초 설치에는 인터넷이 필요합니다. 취소해도 다음에 이어받을 수 있어요."
+                        } else {
+                            "작업 중에는 화면 입력과 편집이 잠깁니다."
+                        })
+                        .size(12.)
+                        .color(MUTED),
                     );
                 });
         } else {
@@ -2173,8 +2257,17 @@ impl Studio {
             if self.api_provider=="local" {
                 ui.label("EmbeddingGemma 2 · 텍스트/이미지 비교");
                 ui.label("Gemma 4 E2B · 그림 상담과 후보 생성");
-                chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"설치 필요: scripts/install-local-ai.ps1"});
-                if ui.button("설치 상태 다시 확인").clicked(){self.local_installed=doodle_core::local_ai::installed();}
+                chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"로컬 AI 설치가 필요해요"});
+                ui.label("최초 다운로드 약 4.3 GB · 설치 중에는 편집이 잠깁니다.");
+                ui.label(RichText::new(format!("설치 위치: {}",doodle_core::local_ai::root().display())).size(12.).color(MUTED));
+                if !self.local_installed {let missing=doodle_core::ai_install::missing(&doodle_core::local_ai::root());ui.label(RichText::new(format!("확인이 필요한 파일: {}",missing.join(", "))).size(12.).color(MUTED));}
+                ui.horizontal(|ui|{
+                    let button=ui.add_enabled(self.job.is_none(),egui::Button::new(if self.local_installed{"설치 파일 검증 · 복구"}else if self.install_error.is_empty(){"로컬 AI 설치"}else{"설치 다시 시도"}).fill(Color32::from_rgb(245,220,200)));
+                    #[cfg(feature="ui-qa")] {self.qa_install_button=Some(button.rect);}
+                    if button.clicked(){self.install_ai(ui.ctx());}
+                    if ui.button("설치 상태 다시 확인").clicked(){self.local_installed=doodle_core::local_ai::installed();self.last_install_check=Instant::now();}
+                });
+                if !self.install_error.is_empty(){ui.colored_label(ACCENT,&self.install_error);}
                 chip(ui,"필요할 때 모델을 순서대로 읽고 작업이 끝나면 메모리를 반환합니다.");
             } else {
             egui::Grid::new("api-info").num_columns(2).spacing([20.,16.]).show(ui,|ui|{ui.label("API 기본 주소");ui.add(egui::TextEdit::singleline(&mut self.api_endpoint).desired_width(460.));ui.end_row();ui.label("모델 이름");ui.add(egui::TextEdit::singleline(&mut self.api_model).hint_text("연결할 제공자의 정확한 모델 ID"));ui.end_row();ui.label("API 키");ui.add(egui::TextEdit::singleline(&mut self.api_key).password(true).hint_text("앱을 닫으면 지워져요"));ui.end_row();});ui.add_space(12.);chip(ui,"키는 메모리에만 보관합니다. 프로젝트·로그·자동 저장에 포함하지 않아요.");}
@@ -2446,6 +2539,25 @@ fn shape_bounds(s: &Shape) -> [f64; 4] {
 impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow") {
+            input
+                .events
+                .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
+            if let Some(rect) = self.qa_install_button {
+                let frame = ctx.cumulative_frame_nr();
+                if frame == 3 || frame == 4 {
+                    let pos = rect.center();
+                    input.events.push(egui::Event::PointerMoved(pos));
+                    input.events.push(egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 3,
+                        modifiers: Default::default(),
+                    });
+                }
+            }
+            return;
+        }
         if !["interaction", "ai-busy", "ai-recover"]
             .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str())
         {
@@ -2494,6 +2606,7 @@ impl eframe::App for Studio {
                     "preview" => self.tab = 1,
                     "templates" => self.tab = 2,
                     "settings" => self.tab = 3,
+                    "install-flow" | "install-missing" => self.tab = 3,
                     "ai-ready" => {
                         self.local_installed = true;
                     }
@@ -2578,7 +2691,21 @@ impl eframe::App for Studio {
                 assert_eq!(saved.glyphs[self.selected].artwork.shapes.len(), 3);
                 self.notify("UI 자동 검증 통과: 그리기 · 실행 취소 · 다시 실행 · 원본 보존 · 저장");
             }
-            if ctx.cumulative_frame_nr() == 12 {
+            let install_flow = std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow");
+            if install_flow && self.ai_started.elapsed() > Duration::from_secs(90) {
+                panic!("Install UI flow timed out: {}", self.install_error);
+            }
+            if (ctx.cumulative_frame_nr() == 12 && !install_flow)
+                || (install_flow
+                    && ctx.cumulative_frame_nr() >= 12
+                    && self.local_installed
+                    && !self.installing_ai)
+            {
+                if install_flow {
+                    assert!(self.install_error.is_empty());
+                    assert!(self.ai_cancel.is_none());
+                    assert!(doodle_core::local_ai::installed());
+                }
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
             }
             let screenshot = ctx.input(|i| {
@@ -2604,6 +2731,10 @@ impl eframe::App for Studio {
             }
         }
         self.poll();
+        if self.job.is_none() && self.last_install_check.elapsed() > Duration::from_secs(2) {
+            self.local_installed = doodle_core::local_ai::installed();
+            self.last_install_check = Instant::now();
+        }
         if self.close_after_ai && self.job.is_none() {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -2612,6 +2743,9 @@ impl eframe::App for Studio {
         }
         if self.dirty || self.job.is_some() {
             ctx.request_repaint_after(Duration::from_millis(300));
+        }
+        if self.tab == 3 && self.job.is_none() {
+            ctx.request_repaint_after(Duration::from_secs(2));
         }
         self.top(ctx);
         self.footer(ctx);
@@ -2639,7 +2773,9 @@ impl eframe::App for Studio {
                     match self.tab {
                         1 => self.preview_ui(ui),
                         2 => self.templates_ui(ui),
-                        _ => self.settings_ui(ui),
+                        _ => {
+                            egui::ScrollArea::vertical().show(ui, |ui| self.settings_ui(ui));
+                        }
                     }
                 });
         }
