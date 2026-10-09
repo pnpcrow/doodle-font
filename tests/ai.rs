@@ -74,8 +74,60 @@ fn both_provider_contracts_preserve_exact_target() {
         assert!(req.contains("U+200D"));
         assert!(req.contains("ja"));
         assert!(req.contains("reference"));
+        assert!(req.contains("image/png"));
+        assert!(req.contains(if provider == "openai" {
+            "image_url"
+        } else {
+            "base64"
+        }));
         assert_eq!(serde_json::to_string(&g).unwrap(), before);
     }
+}
+#[test]
+fn no_image_is_sent_without_reference_consent() {
+    let (url, rx) = mock("openai", r#"{"shapes":[]}"#);
+    run(json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"},"sendReference":false})).unwrap();
+    let request = rx.recv().unwrap();
+    assert!(!request.contains("image_url"));
+    assert!(!request.contains("image/png"));
+}
+#[test]
+fn canvas_snapshot_preserves_color_on_white() {
+    use base64::Engine;
+    let project = new_project();
+    let picture = ai::canvas_image(&project.glyphs[1].artwork).unwrap();
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(picture.trim_start_matches("data:image/png;base64,"))
+        .unwrap();
+    let image = image::load_from_memory(&bytes).unwrap().into_rgba8();
+    assert_eq!(image.dimensions(), (512, 512));
+    assert_eq!(image.get_pixel(0, 0).0, [255, 255, 255, 255]);
+    assert!(image.pixels().any(|p| p[0] > p[2].saturating_add(50)));
+}
+#[test]
+fn cancelling_active_request_returns_promptly() {
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let stop = cancel.clone();
+    std::thread::spawn(move || {
+        let (_stream, _) = listener.accept().unwrap();
+        stop.store(true, Ordering::Relaxed);
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    });
+    let (tx, _rx) = mpsc::channel();
+    let start = std::time::Instant::now();
+    let result = doodle_core::local_ai::run(
+        json!({"action":"assist","glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":format!("http://{address}/v1"),"model":"test"}}),
+        cancel,
+        tx,
+    );
+    assert!(result.unwrap_err().contains("취소"));
+    assert!(start.elapsed().as_secs_f32() < 2.);
 }
 #[test]
 fn malformed_ai_does_not_panic() {
@@ -84,6 +136,17 @@ fn malformed_ai_does_not_panic() {
         json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"}}),
     );
     assert!(result.is_err());
+}
+#[test]
+fn missing_shape_dimensions_are_rejected() {
+    let (url, _rx) = mock(
+        "openai",
+        r##"{"shapes":[{"type":"ellipse","width":600,"color":"#ffcc00"}]}"##,
+    );
+    let result = run(
+        json!({"glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"}}),
+    );
+    assert!(result.unwrap_err().contains("크기"));
 }
 #[test]
 fn protected_targets_never_make_network_request() {

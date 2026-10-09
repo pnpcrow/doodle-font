@@ -104,7 +104,13 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
                     image::imageops::FilterType::Triangle,
                 );
                 let mut layer = Pixmap::new(im.width(), im.height()).ok_or("이미지 크기 오류")?;
-                for (d, p) in layer.data_mut().chunks_exact_mut(4).zip(im.pixels()) {
+                for (d, p) in layer
+                    .data_mut()
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(im.pixels())
+                {
                     for i in 0..3 {
                         d[i] = (p[i] as u16 * p[3] as u16 / 255) as u8;
                     }
@@ -146,7 +152,7 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
         x += pos.x_advance as f32 * scale;
     }
     let mut rgba = pix.data().to_vec();
-    for p in rgba.chunks_exact_mut(4) {
+    for p in rgba.as_chunks_mut::<4>().0.iter_mut() {
         if p[3] > 0 {
             let a = p[3] as u16;
             for c in &mut p[..3] {

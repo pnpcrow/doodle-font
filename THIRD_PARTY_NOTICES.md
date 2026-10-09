@@ -1,5 +1,7 @@
 # Third-party notices
 
+Optional locally installed AI: llama.cpp b11531 (MIT, ggml-org), EmbeddingGemma 2 (Apache-2.0, Google DeepMind), Gemma 4 E2B (Apache-2.0, Google DeepMind). The installer pins ggml-org GGUF conversions and validates their SHA256. Original model cards: https://huggingface.co/google/embeddinggemma-2 and https://huggingface.co/google/gemma-4-E2B-it . Runtime license: https://github.com/ggml-org/llama.cpp/blob/b11531/LICENSE . Model Apache license: https://www.apache.org/licenses/LICENSE-2.0 . These models are separate downloads, not embedded into the application executable.
+
 Doodle Font uses Rust crates from crates.io, pinned in `Cargo.lock`. Notable components include:
 
 - egui / eframe / epaint: MIT OR Apache-2.0

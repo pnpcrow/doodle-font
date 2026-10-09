@@ -1,17 +1,51 @@
 use crate::model::{Artwork, Glyph};
 use serde_json::{json, Value};
-pub async fn generate(payload: Value) -> Result<Artwork, String> {
+pub fn validate_target(payload: &Value, editing: bool) -> Result<Glyph, String> {
     let g: Glyph = serde_json::from_value(payload["glyph"].clone()).map_err(|e| e.to_string())?;
-    if g.locked || ["blank", "unsupported"].contains(&g.status.as_str()) || g.mapping == "control" {
+    if editing
+        && (g.locked
+            || ["blank", "unsupported"].contains(&g.status.as_str())
+            || g.mapping == "control")
+    {
         return Err("잠금·빈칸·제어 문자·미지원 항목은 AI 생성에서 보호돼요.".into());
     }
     if g.template
         .iter()
         .chain(&g.sources)
-        .any(|t| !t.permissions.ai || !t.permissions.edit)
+        .any(|t| !t.permissions.ai || editing && !t.permissions.edit)
     {
         return Err("템플릿의 AI 전송·편집 권한이 없어요.".into());
     }
+    if payload["prompt"].as_str().unwrap_or("").len() > 8000 {
+        return Err("프롬프트는 8,000바이트 이하여야 해요.".into());
+    }
+    Ok(g)
+}
+pub fn canvas_image(artwork: &Artwork) -> Result<String, String> {
+    use base64::Engine;
+    let image = crate::font::raster(artwork, 512)?;
+    let mut white = image::RgbaImage::from_pixel(512, 512, image::Rgba([255, 255, 255, 255]));
+    image::imageops::overlay(&mut white, &image, 0, 0);
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    white
+        .write_to(&mut bytes, image::ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes.into_inner())
+    ))
+}
+pub async fn assist(payload: Value) -> Result<String, String> {
+    let g = validate_target(&payload, false)?;
+    let prompt=format!("You are Doodle Font's font drawing assistant. Reply in Korean, concise and specific. The image is the current glyph canvas, coordinates 0..1000, baseline y=800. Explain what you see and suggest changes relevant to the user's request. Do not claim to have edited anything. Glyph: {}, locale: {}, codepoints: {:?}. User request: {}",g.text,g.locale,g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),payload["prompt"].as_str().unwrap_or(""));
+    request(&payload, &g, &prompt, false).await
+}
+async fn request(
+    payload: &Value,
+    g: &Glyph,
+    prompt: &str,
+    drawing: bool,
+) -> Result<String, String> {
     let config = &payload["config"];
     let endpoint = config["endpoint"]
         .as_str()
@@ -34,35 +68,57 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     if model.trim().is_empty() || !["openai", "anthropic"].contains(&provider) {
         return Err("API 방식과 모델 이름을 입력해 주세요.".into());
     }
-    let reference = if payload["sendReference"] == true {
-        let mut a = g.artwork.clone();
-        a.shapes.retain(|s| s.kind != "image");
-        Some(a)
+    let picture = if payload["sendReference"] == true {
+        Some(canvas_image(&g.artwork)?)
     } else {
         None
     };
-    let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"protected":"Preserve text mapping, template original, baseline and all other variants."});
-    let prompt=format!("Design a glyph as JSON only: {{\"advance\":1000,\"shapes\":[{{\"type\":\"path\",\"points\":[[100,800],[500,200],[800,800]],\"x\":0,\"y\":0,\"width\":0,\"height\":0,\"color\":\"#34352f\",\"stroke\":40,\"fill\":false,\"opacity\":1}}]}}. Allowed types: path, rect, ellipse. Coordinates 0..1000, baseline y=800. Max 64 shapes, 500 points per path. No code or images. Context: {context}");
+    let content = if let Some(picture) = picture {
+        if provider == "anthropic" {
+            json!([{"type":"image","source":{"type":"base64","media_type":"image/png","data":picture.trim_start_matches("data:image/png;base64,")}},{"type":"text","text":prompt}])
+        } else {
+            json!([{"type":"text","text":prompt},{"type":"image_url","image_url":{"url":picture}}])
+        }
+    } else {
+        json!(prompt)
+    };
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(if config["local"] == true {
+            300
+        } else {
+            90
+        }))
         .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
         .build()
         .map_err(|e| e.to_string())?;
     let request = if provider == "anthropic" {
-        client.post(format!("{endpoint}/messages")).header("x-api-key",key).header("anthropic-version","2023-06-01").json(&json!({"model":model,"max_tokens":4096,"messages":[{"role":"user","content":prompt}]}))
+        client.post(format!("{endpoint}/messages")).header("x-api-key",key).header("anthropic-version","2023-06-01").json(&json!({"model":model,"max_tokens":4096,"messages":[{"role":"user","content":content}]}))
     } else {
+        let mut body = json!({"model":model,"max_tokens":if drawing {4096} else {768},"temperature":0.3,"messages":[{"role":"user","content":content}]});
+        if config["local"] == true {
+            body["chat_template_kwargs"] = json!({"enable_thinking":false});
+            if drawing {
+                body["response_format"] = json!({"type":"json_object","schema":{
+                "type":"object","required":["advance","shapes"],"additionalProperties":false,
+                "properties":{"advance":{"type":"number","minimum":0,"maximum":2000},"shapes":{"type":"array","maxItems":12,"items":{
+                    "type":"object","additionalProperties":false,"required":["type","x","y","width","height","points","color","stroke","fill","opacity"],
+                    "properties":{"type":{"type":"string","enum":["path","rect","ellipse"]},"x":{"type":"number"},"y":{"type":"number"},"width":{"type":"number","minimum":1},"height":{"type":"number","minimum":1},"points":{"type":"array","maxItems":100,"items":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"number"}}},"color":{"type":"string","pattern":"^#[0-9a-fA-F]{6}$"},"stroke":{"type":"number","minimum":0,"maximum":200},"fill":{"type":"boolean"},"opacity":{"type":"number","minimum":0,"maximum":1}}
+                }}}}});
+            }
+        }
         client
             .post(format!("{endpoint}/chat/completions"))
             .bearer_auth(key)
-            .json(&json!({"model":model,"messages":[{"role":"user","content":prompt}]}))
+            .json(&body)
     };
     let mut response = request
         .send()
         .await
-        .map_err(|_| "API에 연결하지 못했어요. 주소와 네트워크를 확인해 주세요.")?;
+        .map_err(|_| "AI에 연결하지 못했어요. 주소와 네트워크를 확인해 주세요.")?;
     if !response.status().is_success() {
         return Err(format!(
-            "API 응답 오류 ({}). 주소·모델·키를 확인해 주세요.",
+            "AI 응답 오류 ({}). 주소·모델·키를 확인해 주세요.",
             response.status().as_u16()
         ));
     }
@@ -79,19 +135,33 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     }
     let result: Value =
         serde_json::from_slice(&bytes).map_err(|_| "AI 응답이 JSON 형식이 아니에요.")?;
-    let answer = if provider == "anthropic" {
-        result["content"]
+    if provider == "anthropic" {
+        Ok(result["content"]
             .as_array()
             .ok_or("AI 응답이 비어 있어요.")?
             .iter()
             .filter_map(|c| c["text"].as_str())
-            .collect::<String>()
+            .collect())
     } else {
         result["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or("AI 응답이 비어 있어요.")?
-            .to_owned()
+            .filter(|s| !s.trim().is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| "AI 응답이 비어 있어요.".into())
+    }
+}
+pub async fn generate(payload: Value) -> Result<Artwork, String> {
+    let g = validate_target(&payload, true)?;
+    let reference = if payload["sendReference"] == true {
+        let mut a = g.artwork.clone();
+        a.shapes.retain(|s| s.kind != "image");
+        Some(a)
+    } else {
+        None
     };
+    let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"protected":"Preserve text mapping, template original, baseline and all other variants."});
+    let prompt=format!("Create a vector drawing of the exact target glyph, matching the reference image and the user's style instruction. Return JSON only with numeric advance and an array shapes. Each shape must have type (path, rect or ellipse), color (#RRGGBB), stroke (numeric width), fill (boolean), opacity (0..1). Paths have points: an array of numeric [x,y] pairs. Rectangles and ellipses have x,y,width,height (bounding box, not center or radii). Use coordinates 0..1000 with baseline y=800. Use at most 12 simple shapes and 100 points per path. No prose, code, SVG or nested JSON strings. Draw the requested glyph, not a generic letter or demonstration. Context: {context}");
+    let answer = request(&payload, &g, &prompt, true).await?;
     let cleaned = answer
         .trim()
         .trim_start_matches("```json")
@@ -108,6 +178,15 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     }
     for s in shapes {
         let o = s.as_object_mut().ok_or("AI 레이어 형식 오류")?;
+        if o.get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| ["rect", "ellipse"].contains(&t))
+            && ["width", "height"]
+                .iter()
+                .any(|k| o.get(*k).and_then(Value::as_f64).is_none_or(|n| n <= 0.))
+        {
+            return Err("AI 도형의 가로·세로 크기가 올바르지 않아요. 다시 요청해 주세요.".into());
+        }
         let defaults = json!({"id":uuid::Uuid::new_v4().to_string(),"name":"AI 후보 레이어","points":[],"x":0,"y":0,"width":0,"height":0,"color":"#34352f","stroke":36,"fill":false,"opacity":1,"visible":true,"locked":false});
         for (k, v) in defaults.as_object().unwrap() {
             o.entry(k.clone()).or_insert(v.clone());

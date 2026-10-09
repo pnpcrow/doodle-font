@@ -264,7 +264,13 @@ pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
             );
             let mut overlay = tiny_skia::Pixmap::new(resized.width(), resized.height())
                 .ok_or("이미지 크기 오류")?;
-            for (d, p) in overlay.data_mut().chunks_exact_mut(4).zip(resized.pixels()) {
+            for (d, p) in overlay
+                .data_mut()
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(resized.pixels())
+            {
                 let a = p[3] as u16;
                 d[0] = (p[0] as u16 * a / 255) as u8;
                 d[1] = (p[1] as u16 * a / 255) as u8;
@@ -318,7 +324,7 @@ pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
         }
     }
     let mut rgba = pix.data().to_vec();
-    for p in rgba.chunks_exact_mut(4) {
+    for p in rgba.as_chunks_mut::<4>().0.iter_mut() {
         if p[3] > 0 {
             let a = p[3] as u16;
             for v in &mut p[..3] {
