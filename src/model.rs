@@ -94,6 +94,8 @@ pub struct Project {
     pub glyphs: Vec<Glyph>,
     pub components: Vec<Component>,
     pub templates: Vec<Template>,
+    #[serde(default)]
+    pub palette: Vec<String>,
 }
 pub fn check(ok: bool, message: &str) -> Result<(), String> {
     if ok {
@@ -210,6 +212,15 @@ impl Project {
         )?;
         let mut ids = HashSet::new();
         let mut maps = HashSet::new();
+        check(
+            self.palette.len() <= 64
+                && self.palette.iter().all(|c| {
+                    c.len() == 7
+                        && c.starts_with('#')
+                        && c[1..].bytes().all(|v| v.is_ascii_hexdigit())
+                }),
+            "팔레트에는 최대 64개의 #RRGGBB 색상을 보관해요.",
+        )?;
         for g in &self.glyphs {
             check(
                 ids.insert(&g.id) && maps.insert((&g.text, &g.locale)),
@@ -217,6 +228,9 @@ impl Project {
             )?;
             check(
                 !g.text.is_empty()
+                    && g.id.len() <= 100
+                    && g.name.len() <= 600
+                    && g.group.len() <= 100
                     && g.text.chars().count() <= 128
                     && ["default", "ko", "ja"].contains(&g.locale.as_str()),
                 "문자 매핑을 확인해 주세요.",

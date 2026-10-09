@@ -79,13 +79,13 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
         .sum::<i32>() as f32
         * scale)
         .abs()
-        + px * 0.3)
+        + 1.)
         .ceil()
         .clamp(1., 4096.) as u32;
     let height = (px * 1.5).ceil() as u32;
     let mut pix = Pixmap::new(width, height).ok_or("미리보기 크기가 너무 커요.")?;
     let baseline = px * 1.05;
-    let mut x = px * 0.1;
+    let mut x = 0.;
     for (info, pos) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
         let gid = GlyphId(info.glyph_id as u16);
         let ox = x + pos.x_offset as f32 * scale;

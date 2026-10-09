@@ -59,6 +59,8 @@ pub struct Studio {
     export_mode: String,
     export_locale: String,
     export_group: bool,
+    export_subset: bool,
+    export_text: String,
     export_split: bool,
     export_report: String,
     preview_text: String,
@@ -82,6 +84,10 @@ pub struct Studio {
     template_attribution: String,
     template_rights: [bool; 5],
     help: bool,
+    variant_open: bool,
+    variant_targets: std::collections::HashSet<String>,
+    #[cfg(feature = "ui-qa")]
+    qa_canvas: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -89,9 +95,7 @@ impl Studio {
         let mut fonts = egui::FontDefinitions::default();
         for (name, path) in [
             ("korean", "C:/Windows/Fonts/malgun.ttf"),
-            ("japanese", "C:/Windows/Fonts/meiryo.ttc"),
             ("symbols", "C:/Windows/Fonts/seguisym.ttf"),
-            ("emoji", "C:/Windows/Fonts/seguiemj.ttf"),
         ] {
             if let Ok(bytes) = std::fs::read(path) {
                 fonts
@@ -179,6 +183,8 @@ impl Studio {
             export_mode: "color".into(),
             export_locale: "combined".into(),
             export_group: false,
+            export_subset: false,
+            export_text: String::new(),
             export_split: false,
             export_report: String::new(),
             preview_text: "A little doodle, a lot of you.\n나의 글씨로 쓰는 오늘 ❤️ 😊".into(),
@@ -202,6 +208,10 @@ impl Studio {
             template_attribution: String::new(),
             template_rights: [true, false, false, false, false],
             help: false,
+            variant_open: false,
+            variant_targets: Default::default(),
+            #[cfg(feature = "ui-qa")]
+            qa_canvas: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -273,20 +283,7 @@ impl Studio {
                 self.history.push(before);
                 self.redo.clear();
                 while self.history.len() > 30
-                    || self
-                        .history
-                        .iter()
-                        .map(|g| {
-                            g.artwork
-                                .shapes
-                                .iter()
-                                .map(|s| {
-                                    s.src.as_ref().map_or(0, String::len) + s.points.len() * 16
-                                })
-                                .sum::<usize>()
-                        })
-                        .sum::<usize>()
-                        > 24_000_000
+                    || self.history.iter().map(glyph_bytes).sum::<usize>() > 24_000_000
                 {
                     self.history.remove(0);
                 }
@@ -436,6 +433,38 @@ impl Studio {
             self.spawn(ctx, move || storage::read(&path).map(Job::Imported));
         }
     }
+    fn fresh_project(&mut self) {
+        let archive = self
+            .save_path
+            .parent()
+            .unwrap()
+            .join("projects")
+            .join(format!("{}.doodle.json", uid()));
+        if let Err(e) = storage::save(&archive, &self.project) {
+            self.notify(e);
+            return;
+        }
+        if self.save_error {
+            self.notify(
+                "현재 작업을 사본으로 보관했어요. 기존 자동 저장 파일의 오류를 먼저 해결해 주세요.",
+            );
+            return;
+        }
+        self.project = new_project();
+        self.selected = 0;
+        self.group = 0;
+        self.history.clear();
+        self.redo.clear();
+        self.layer = None;
+        self.reindex();
+        self.refresh_catalog();
+        self.changed();
+        self.save();
+        self.notify(format!(
+            "새 프로젝트를 만들었어요. 이전 작업: {}",
+            archive.display()
+        ));
+    }
     fn save_copy(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .set_file_name(format!("{}.doodle.json", self.project.name))
@@ -551,6 +580,9 @@ impl Studio {
                         }
                         if ui.button("열기").clicked() {
                             self.open_project(ctx)
+                        }
+                        if ui.button("새로").clicked() {
+                            self.fresh_project();
                         }
                     });
                 });
@@ -1203,6 +1235,10 @@ impl Studio {
                         if ui.button("사용자 정의 해제 · 시스템 표시").clicked() {
                             self.edit(|g| restore(g, "system"));
                         }
+                        if ui.button("선택한 변형에 그림 복사…").clicked() {
+                            self.variant_targets.clear();
+                            self.variant_open = true;
+                        }
                     });
                     ui.add_space(14.);
                     ui.separator();
@@ -1385,6 +1421,35 @@ impl Studio {
                 ui.horizontal(|ui| {
                     ui.checkbox(&mut self.guides, "가이드");
                     ui.checkbox(&mut self.ghost, "밑글자");
+                    for hex in &self.project.palette {
+                        if ui
+                            .add(
+                                egui::Button::new(" ")
+                                    .fill(color32(hex))
+                                    .min_size(Vec2::splat(18.)),
+                            )
+                            .on_hover_text(hex)
+                            .clicked()
+                        {
+                            self.color = color32(hex);
+                        }
+                    }
+                    if ui
+                        .small_button("+")
+                        .on_hover_text("현재 색을 팔레트에 저장")
+                        .clicked()
+                    {
+                        let hex = format!(
+                            "#{:02x}{:02x}{:02x}",
+                            self.color.r(),
+                            self.color.g(),
+                            self.color.b()
+                        );
+                        if self.project.palette.len() < 64 && !self.project.palette.contains(&hex) {
+                            self.project.palette.push(hex);
+                            self.changed();
+                        }
+                    }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add(
                             egui::Slider::new(&mut self.zoom, 0.6..=1.6)
@@ -1402,6 +1467,10 @@ impl Studio {
                     .show(ui, |ui| {
                         let (outer, response) =
                             ui.allocate_exact_size(Vec2::splat(side), Sense::click_and_drag());
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_canvas = Some(outer);
+                        }
                         let painter = ui.painter_at(outer);
                         painter.rect_filled(outer, 4., Color32::from_rgb(255, 254, 250));
                         let to_screen = |p: [f64; 2]| {
@@ -1774,13 +1843,16 @@ fn system_texture(
     cache: &mut HashMap<String, egui::TextureHandle>,
 ) -> Option<egui::TextureHandle> {
     let emoji = text.chars().any(|c| c as u32 >= 0x1f000 || c == '\u{fe0f}');
-    let name = if emoji {
-        "seguiemj.ttf"
+    let candidates: &[&str] = if emoji {
+        &["seguiemj.ttf", "seguisym.ttf", "malgun.ttf"]
     } else if locale == "ja" {
-        "meiryo.ttc"
+        &["YuGothM.ttc", "meiryo.ttc", "msgothic.ttc", "malgun.ttf"]
     } else {
-        "malgun.ttf"
+        &["malgun.ttf", "segoeui.ttf"]
     };
+    let name = *candidates
+        .iter()
+        .find(|name| std::path::Path::new(&format!("C:/Windows/Fonts/{name}")).exists())?;
     if !fonts.contains_key(name) {
         let bytes = std::fs::read(format!("C:/Windows/Fonts/{name}")).ok()?;
         fonts.insert(name.into(), bytes);
@@ -1868,7 +1940,10 @@ impl Studio {
             self.tab = 3;
             return;
         }
-        let g = self.project.glyphs[self.selected].clone();
+        let Some(g) = self.project.glyphs.get(self.selected).cloned() else {
+            self.notify("먼저 작업할 글리프를 선택해 주세요.");
+            return;
+        };
         let id = g.id.clone();
         let payload = serde_json::json!({"glyph":g,"config":{"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key},"prompt":self.ai_prompt,"sendReference":self.send_reference,"colorMode":if self.ai_color{"color"}else{"mono"}});
         self.spawn(ctx, move || {
@@ -1920,6 +1995,88 @@ impl Studio {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.variant_open {
+            let mut open = true;
+            egui::Window::new("선택한 변형에 그림 복사")
+                .open(&mut open)
+                .default_width(480.)
+                .show(ctx, |ui| {
+                    ui.label(
+                        "선택한 대상에만 그림을 복사합니다. 원문·지역·원본 템플릿은 유지됩니다.",
+                    );
+                    let entries: Vec<_> = self
+                        .project
+                        .glyphs
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, g)| *i != self.selected && editable(g))
+                        .map(|(_, g)| {
+                            (
+                                g.id.clone(),
+                                format!(
+                                    "{} · {} · {}",
+                                    display(&g.text),
+                                    g.locale,
+                                    codepoints(&g.text)
+                                ),
+                            )
+                        })
+                        .collect();
+                    egui::ScrollArea::vertical().max_height(330.).show_rows(
+                        ui,
+                        26.,
+                        entries.len(),
+                        |ui, rows| {
+                            for i in rows {
+                                let (id, label) = &entries[i];
+                                let mut checked = self.variant_targets.contains(id);
+                                if ui.checkbox(&mut checked, label).changed() {
+                                    if checked {
+                                        self.variant_targets.insert(id.clone());
+                                    } else {
+                                        self.variant_targets.remove(id);
+                                    }
+                                }
+                            }
+                        },
+                    );
+                    if ui
+                        .button(format!("선택한 {}개에 적용", self.variant_targets.len()))
+                        .clicked()
+                    {
+                        let original = self.selected;
+                        let source = self.project.glyphs[original].clone();
+                        let targets: Vec<usize> = self
+                            .project
+                            .glyphs
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, g)| self.variant_targets.contains(&g.id))
+                            .map(|(i, _)| i)
+                            .collect();
+                        for index in targets {
+                            self.selected = index;
+                            self.edit(|g| {
+                                check(editable(g), "대상 글리프가 보호되어 있어요.")?;
+                                g.artwork = source.artwork.clone();
+                                for t in source.template.iter().chain(&source.sources) {
+                                    if !g.sources.iter().any(|v| v.id == t.id) {
+                                        g.sources.push(t.clone());
+                                    }
+                                }
+                                g.status = "edited".into();
+                                Ok(())
+                            });
+                        }
+                        self.selected = original;
+                        self.variant_open = false;
+                        self.variant_targets.clear();
+                    }
+                });
+            if !open {
+                self.variant_open = false;
+            }
+        }
         if self.add_open {
             let mut open = true;
             egui::Window::new("문자와 문자열 추가")
@@ -2020,9 +2177,9 @@ impl Studio {
             ui.label(RichText::new("그린 글자를, 진짜 폰트로.").size(23.).strong());ui.add_space(12.);ui.label("폰트 패밀리 이름");if ui.text_edit_singleline(&mut self.project.family).changed(){self.changed();}
             egui::ComboBox::from_id_salt("export-mode").selected_text(match self.export_mode.as_str(){"mono"=>"단색 TTF · 이미지 실루엣 변환","bitmap"=>"비트맵 TTF · sbix",_=>"컬러 TTF · COLR/CPAL"}).show_ui(ui,|ui|{ui.selectable_value(&mut self.export_mode,"color".into(),"컬러 TTF · COLR/CPAL");ui.selectable_value(&mut self.export_mode,"mono".into(),"단색 TTF · 이미지 실루엣 변환");ui.selectable_value(&mut self.export_mode,"bitmap".into(),"비트맵 TTF · sbix");});
             egui::ComboBox::from_id_salt("export-locale").selected_text(match self.export_locale.as_str(){"ko"=>"한국어용","ja"=>"일본어용","default"=>"공통 자형만",_=>"통합 · 지역별 locl"}).show_ui(ui,|ui|{for(v,l)in [("combined","통합 · 지역별 locl"),("ko","한국어용"),("ja","일본어용"),("default","공통 자형만")]{ui.selectable_value(&mut self.export_locale,v.into(),l);}});
-            ui.checkbox(&mut self.export_group,"현재 문자 모음만 출력");ui.checkbox(&mut self.export_split,"문자 모음별 분할 · ZIP");ui.add_space(12.);
+            ui.checkbox(&mut self.export_subset,"이 문장에 필요한 글리프만 출력");if self.export_subset{ui.text_edit_multiline(&mut self.export_text);}ui.checkbox(&mut self.export_group,"현재 문자 모음만 출력");ui.checkbox(&mut self.export_split,"문자 모음별 분할 · ZIP");ui.add_space(12.);
             let count=self.project.glyphs.iter().filter(|g|g.status=="edited"||g.status=="blank").count();ui.label(format!("프로젝트 작성 항목 {count}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다."));chip(ui,"시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요.");chip(ui,"컬러 모드에 이미지가 있으면 전체를 sbix로 출력합니다. 단색 모드는 이미지를 64px 실루엣으로 변환해요.");chip(ui,"공백의 줄바꿈 성격과 제어 문자 동작은 바뀌지 않습니다.");ui.add_space(12.);
-            ui.horizontal(|ui|{for(save,label)in [(false,"출력 전 검사"),(true,"파일로 저장")]{if ui.add_enabled(self.job.is_none(),egui::Button::new(label)).clicked(){let path=if save{rfd::FileDialog::new().set_file_name(if self.export_split{"Doodle-Font-fonts.zip".into()}else{format!("{}.ttf",self.project.family)}).save_file()}else{None};if save&&path.is_none(){continue}let p=self.project.clone();let options=font::ExportOptions{mode:Some(self.export_mode.clone()),locale:Some(self.export_locale.clone()),group:Some(if self.export_group{GROUPS[self.group].0.into()}else{"all".into()}),ids:None,split:Some(self.export_split)};self.spawn(ctx,move||{let result=font::export(&p,&options)?;if let Some(path)=&path{std::fs::write(path,STANDARD.decode(&result.data).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;let report=path.with_extension("report.json");std::fs::write(report,serde_json::to_vec_pretty(&result.reports).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;}Ok(Job::Export(result,path))});}}});
+            ui.horizontal(|ui|{for(save,label)in [(false,"출력 전 검사"),(true,"파일로 저장")]{if ui.add_enabled(self.job.is_none(),egui::Button::new(label)).clicked(){let path=if save{rfd::FileDialog::new().set_file_name(if self.export_split{"Doodle-Font-fonts.zip".into()}else{format!("{}.ttf",self.project.family)}).save_file()}else{None};if save&&path.is_none(){continue}let p=self.project.clone();let options=font::ExportOptions{mode:Some(self.export_mode.clone()),locale:Some(self.export_locale.clone()),group:Some(if self.export_group{GROUPS[self.group].0.into()}else{"all".into()}),ids:if self.export_subset{Some(self.project.glyphs.iter().filter(|g|self.export_text.contains(&g.text)).map(|g|g.id.clone()).collect())}else{None},split:Some(self.export_split)};self.spawn(ctx,move||{let result=font::export(&p,&options)?;if let Some(path)=&path{std::fs::write(path,STANDARD.decode(&result.data).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;let report=path.with_extension("report.json");std::fs::write(report,serde_json::to_vec_pretty(&result.reports).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;}Ok(Job::Export(result,path))});}}});
             if !self.export_report.is_empty(){ui.add_space(10.);egui::ScrollArea::vertical().max_height(230.).show(ui,|ui|{ui.label(&self.export_report);});}
         });
             if !open {
@@ -2033,6 +2190,22 @@ impl Studio {
             egui::Window::new("두들 폰트 사용하기").open(&mut self.help).default_width(580.).show(ctx,|ui|{ui.label(RichText::new("한 글자부터 시작하세요.").size(24.));for t in ["1. 왼쪽 문자 모음에서 글자를 고릅니다. 전체 한글·한자는 선택할 때만 작업 데이터가 만들어집니다.","2. 펜·직선·도형으로 그립니다. 레이어를 고르면 이동·크기·색·순서·잠금을 바꿀 수 있습니다.","3. 기준 저장을 눌러 승인본을 남겨 두세요. 템플릿 원본 복원과 실행 취소는 별개입니다.","4. 문자 추가에서 문장을 추출하거나 전체 문자열을 하나의 그림에 매핑할 수 있습니다.","5. 문장 미리보기에서 프로젝트 그림과 시스템 대체를 구분합니다. 출력한 TTF로 치환 결과도 검사하세요.","6. 폰트 내보내기에서 단색·컬러·비트맵 및 한국어·일본어·분할 출력을 선택합니다.","단축키: Ctrl+Z 실행 취소 · Ctrl+Y 다시 실행 · Ctrl+S 프로젝트 사본 저장","이미지 원본은 프로젝트에 PNG로 보존합니다. 단색 벡터 변환 전 그림은 기준 버전으로 남깁니다.","자모 조합은 U+1100 초성·U+1161 중성·U+11A8 종성의 작성 글리프를 이용합니다. 조합 후 각 음절을 개별 수정할 수 있습니다.","이 앱은 다른 기기나 모든 앱의 이모지를 일괄 변경하지 않습니다. 각 앱에서 출력 폰트를 선택해야 합니다."]{ui.add_space(9.);ui.label(t);}});
         }
     }
+}
+fn glyph_bytes(g: &Glyph) -> usize {
+    fn art(a: &Artwork) -> usize {
+        a.shapes
+            .iter()
+            .map(|s| s.src.as_ref().map_or(0, String::len) + s.points.len() * 16 + 256)
+            .sum()
+    }
+    art(&g.artwork)
+        + g.baseline.as_ref().map_or(0, art)
+        + g.template
+            .iter()
+            .chain(&g.sources)
+            .map(|t| t.original.as_ref().map_or(0, art))
+            .sum::<usize>()
+        + g.candidates.iter().map(|c| art(&c.artwork)).sum::<usize>()
 }
 fn shape_bounds(s: &Shape) -> [f64; 4] {
     if s.kind == "path" && !s.points.is_empty() {
@@ -2053,6 +2226,36 @@ fn shape_bounds(s: &Shape) -> [f64; 4] {
     }
 }
 impl eframe::App for Studio {
+    #[cfg(feature = "ui-qa")]
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if std::env::var("DOODLE_QA_VIEW").as_deref() != Ok("interaction") {
+            return;
+        }
+        input
+            .events
+            .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
+        if let Some(rect) = self.qa_canvas {
+            let frame = ctx.cumulative_frame_nr();
+            let p = rect.min
+                + rect.size()
+                    * match frame {
+                        3 => Vec2::new(0.22, 0.22),
+                        4 => Vec2::new(0.35, 0.38),
+                        _ => Vec2::new(0.48, 0.28),
+                    };
+            if (3..=6).contains(&frame) {
+                input.events.push(egui::Event::PointerMoved(p));
+            }
+            if frame == 3 || frame == 6 {
+                input.events.push(egui::Event::PointerButton {
+                    pos: p,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 3,
+                    modifiers: Default::default(),
+                });
+            }
+        }
+    }
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         #[cfg(feature = "ui-qa")]
         if let Ok(output) = std::env::var("DOODLE_QA_OUTPUT") {
@@ -2070,6 +2273,35 @@ impl eframe::App for Studio {
                 }
             }
             ctx.request_repaint();
+            if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("interaction")
+                && ctx.cumulative_frame_nr() == 8
+            {
+                assert_eq!(
+                    self.project.glyphs[self.selected].artwork.shapes.len(),
+                    3,
+                    "pointer drawing should add a layer"
+                );
+                self.undo(false);
+                assert_eq!(self.project.glyphs[self.selected].artwork.shapes.len(), 2);
+                self.undo(true);
+                assert_eq!(self.project.glyphs[self.selected].artwork.shapes.len(), 3);
+                assert_eq!(
+                    self.project.glyphs[self.selected]
+                        .template
+                        .as_ref()
+                        .unwrap()
+                        .original
+                        .as_ref()
+                        .unwrap()
+                        .shapes
+                        .len(),
+                    2
+                );
+                self.save();
+                let saved = storage::read(&self.save_path).expect("native autosave");
+                assert_eq!(saved.glyphs[self.selected].artwork.shapes.len(), 3);
+                self.notify("UI 자동 검증 통과: 그리기 · 실행 취소 · 다시 실행 · 원본 보존 · 저장");
+            }
             if ctx.cumulative_frame_nr() == 12 {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
             }

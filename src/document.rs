@@ -156,6 +156,9 @@ pub fn restore(g: &mut Glyph, mode: &str) -> Result<(), String> {
     }
     .ok_or("복원할 원본 데이터가 없어요. 같은 버전의 원본을 가져와 주세요.")?;
     g.artwork = a.clone();
+    if mode == "template" {
+        g.sources.clear();
+    }
     g.status = "edited".into();
     Ok(())
 }
@@ -284,6 +287,14 @@ pub fn new_project() -> Project {
         glyphs: vec![],
         templates: ts,
         components: vec![],
+        palette: vec![
+            "#34352f".into(),
+            "#df795c".into(),
+            "#f6be4f".into(),
+            "#8baf86".into(),
+            "#829ec9".into(),
+            "#ba96bd".into(),
+        ],
     };
     for (text, locale, group, t) in [
         ("A", "default", "latin", 0),
