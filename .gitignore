@@ -1,0 +1,13 @@
+node_modules/
+dist/
+release/
+build/
+__pycache__/
+*.pyc
+.venv/
+.env*
+*.log
+test-results/
+artifacts/
+*.spec
+!*.test.ts
