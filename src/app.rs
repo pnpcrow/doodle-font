@@ -1227,9 +1227,7 @@ impl Studio {
                                 }
                                 if ui.small_button("삭제").clicked() {
                                     self.edit(|g| {
-                                        g.artwork.shapes[i].visible = false;
-                                        g.artwork.shapes[i].locked = true;
-                                        g.artwork.shapes[i].name = "원본 이미지 · 숨김 보관".into();
+                                        g.artwork.shapes.remove(i);
                                         Ok(())
                                     });
                                     self.layer = None;
@@ -1251,7 +1249,9 @@ impl Studio {
                                         if g.baseline.is_none() {
                                             g.baseline = Some(g.artwork.clone());
                                         }
-                                        g.artwork.shapes.remove(i);
+                                        g.artwork.shapes[i].visible = false;
+                                        g.artwork.shapes[i].locked = true;
+                                        g.artwork.shapes[i].name = "원본 이미지 · 숨김 보관".into();
                                         for pts in polys {
                                             let mut s = path(&pts);
                                             s.fill = true;
