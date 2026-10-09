@@ -2,7 +2,7 @@
 
 사용자 결정: Windows 데스크톱 앱. 사용자 제공 요구사항은 `requirements.ko.txt`에 보존한다.
 
-1. Git 초기화, 요구사항 보존, Tauri + React + Rust 로컬 폰트 엔진 기반 구성.
+1. Git 초기화, 요구사항 보존, egui/eframe + Rust 네이티브 폰트 엔진 기반 구성.
 2. 원문/지역별 글리프/템플릿 원본/승인본/AI 후보 분리. 자소 단위 추출, 문자 집합, PUA, 공백 및 제어 문자 보호.
 3. 벡터·비트맵·레이어 편집, 부품 재사용, 복원, 프로젝트 저장. 한국어 작업실 UI.
 4. 실제 TTF 출력(cmap, format 14, GSUB, locl, COLR/CPAL, sbix), 범위·분할 출력 및 실제 폰트 검증.
@@ -19,4 +19,4 @@
 - https://platform.claude.com/docs/en/api/messages/create
 - https://www.electronjs.org/docs/latest/tutorial/security
 
-사용자 추가 결정: Rust 기반으로 구현. 배포판에는 Node.js, Electron, Python 런타임을 포함하지 않는다. Node.js는 UI 빌드 도구로만 사용한다. Windows WebView2 + Rust 단일 앱으로 배포한다. Python fontTools는 출력물을 독립적으로 확인하는 개발용 검증에만 사용한다.
+사용자 최종 결정: Rust 기반, Tauri 제외. egui/eframe 네이티브 UI를 사용한다. Node.js, Electron, Tauri, WebView2, Python은 앱 실행 및 빌드에 필요하지 않다. Python fontTools는 출력물을 독립적으로 확인하는 개발용 검증에만 사용한다.

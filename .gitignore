@@ -11,6 +11,7 @@ test-results/
 artifacts/
 src-tauri/target/
 src-tauri/gen/
+target/
 *.tsbuildinfo
 *.spec
 !*.test.ts
