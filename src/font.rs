@@ -27,6 +27,8 @@ pub struct Report {
     pub mode: String,
     pub warnings: Vec<String>,
     pub attribution: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license_text: Option<String>,
 }
 #[derive(Default, Clone)]
 struct B(Vec<u8>);
@@ -91,6 +93,18 @@ pub fn decode_image(src: &str) -> Result<image::RgbaImage, String> {
         .map_err(|_| "4096 × 4096 이하 PNG를 사용해 주세요.".into())
 }
 pub fn polygons(s: &Shape) -> Result<Vec<Vec<[f64; 2]>>, String> {
+    if s.kind == "outline" {
+        return Ok(s
+            .contours
+            .iter()
+            .map(|contour| {
+                contour
+                    .iter()
+                    .map(|p| [s.x + p[0] * s.width / 1000., s.y + p[1] * s.height / 1000.])
+                    .collect()
+            })
+            .collect());
+    }
     let mut out = vec![];
     if s.kind == "image" {
         let im = decode_image(s.src.as_deref().unwrap_or(""))?;
@@ -191,7 +205,7 @@ fn outline(shapes: &[&Shape]) -> Result<Outline, String> {
                 .take(pts.len())
                 .map(|(a, b)| a[0] * b[1] - b[0] * a[1])
                 .sum();
-            if area < 0. {
+            if s.kind != "outline" && area < 0. {
                 pts.reverse();
             }
             contours.push(pts);
@@ -300,7 +314,7 @@ pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
                     .take(pts.len())
                     .map(|(a, b)| a[0] * b[1] - b[0] * a[1])
                     .sum();
-                if area < 0. {
+                if s.kind != "outline" && area < 0. {
                     pts.reverse();
                 }
                 pb.move_to(pts[0][0] as f32, pts[0][1] as f32);
@@ -837,7 +851,12 @@ pub fn compile(
         .into_iter()
         .collect::<Vec<_>>()
         .join("; ");
-    let names = [
+    let has_ofl = selected
+        .iter()
+        .flat_map(|g| g.template.iter().chain(&g.sources))
+        .any(|t| t.license == "SIL Open Font License 1.1");
+    let license_text = has_ofl.then(|| format!("{attribution}\n\n{}", crate::typography::OFL));
+    let mut names = vec![
         (0, attribution.clone()),
         (1, family.clone()),
         (2, "Regular".into()),
@@ -846,6 +865,13 @@ pub fn compile(
         (5, "Version 1.000".into()),
         (6, format!("{ps}-Regular")),
     ];
+    if let Some(license) = &license_text {
+        names.push((13, license.clone()));
+        names.push((
+            14,
+            "https://openfontlicense.org/open-font-license-official-text/".into(),
+        ));
+    }
     let mut name = B::default();
     name.u16(0);
     name.u16(names.len() as u16);
@@ -937,6 +963,7 @@ pub fn compile(
             mode: mode.into(),
             warnings,
             attribution,
+            license_text,
         },
     ))
 }
@@ -1025,6 +1052,17 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
             .map_err(|e| e.to_string())?;
         zip.write_all(&serde_json::to_vec_pretty(&reports).map_err(|e| e.to_string())?)
             .map_err(|e| e.to_string())?;
+        for (i, report) in reports.iter().enumerate() {
+            if let Some(license) = &report.license_text {
+                zip.start_file(
+                    format!("OFL-{}.txt", i + 1),
+                    zip::write::SimpleFileOptions::default(),
+                )
+                .map_err(|e| e.to_string())?;
+                zip.write_all(license.as_bytes())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
         (
             "Doodle-Font-fonts.zip".into(),
             zip.finish().map_err(|e| e.to_string())?.into_inner(),

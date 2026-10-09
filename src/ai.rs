@@ -38,13 +38,14 @@ pub fn canvas_image(artwork: &Artwork) -> Result<String, String> {
 pub async fn assist(payload: Value) -> Result<String, String> {
     let g = validate_target(&payload, false)?;
     let prompt=format!("You are Doodle Font's font drawing assistant. Reply in Korean, concise and specific. The image is the current glyph canvas, coordinates 0..1000, baseline y=800. Explain what you see and suggest changes relevant to the user's request. Do not claim to have edited anything. Glyph: {}, locale: {}, codepoints: {:?}. User request: {}",g.text,g.locale,g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),payload["prompt"].as_str().unwrap_or(""));
-    request(&payload, &g, &prompt, false).await
+    request(&payload, &g, &prompt, false, None).await
 }
 async fn request(
     payload: &Value,
     g: &Glyph,
     prompt: &str,
     drawing: bool,
+    schema: Option<Value>,
 ) -> Result<String, String> {
     let config = &payload["config"];
     let endpoint = config["endpoint"]
@@ -77,7 +78,7 @@ async fn request(
         if provider == "anthropic" {
             json!([{"type":"image","source":{"type":"base64","media_type":"image/png","data":picture.trim_start_matches("data:image/png;base64,")}},{"type":"text","text":prompt}])
         } else {
-            json!([{"type":"text","text":prompt},{"type":"image_url","image_url":{"url":picture}}])
+            json!([{"type":"image_url","image_url":{"url":picture}},{"type":"text","text":prompt}])
         }
     } else {
         json!(prompt)
@@ -95,10 +96,12 @@ async fn request(
     let request = if provider == "anthropic" {
         client.post(format!("{endpoint}/messages")).header("x-api-key",key).header("anthropic-version","2023-06-01").json(&json!({"model":model,"max_tokens":4096,"messages":[{"role":"user","content":content}]}))
     } else {
-        let mut body = json!({"model":model,"max_tokens":if drawing {4096} else {768},"temperature":0.3,"messages":[{"role":"user","content":content}]});
+        let mut body = json!({"model":model,"max_tokens":if schema.is_some() {512} else if drawing {4096} else {768},"temperature":0.3,"messages":[{"role":"user","content":content}]});
         if config["local"] == true {
             body["chat_template_kwargs"] = json!({"enable_thinking":false});
-            if drawing {
+            if let Some(schema) = schema {
+                body["response_format"] = json!({"type":"json_object","schema":schema});
+            } else if drawing {
                 body["response_format"] = json!({"type":"json_object","schema":{
                 "type":"object","required":["advance","shapes"],"additionalProperties":false,
                 "properties":{"advance":{"type":"number","minimum":0,"maximum":2000},"shapes":{"type":"array","minItems":1,"maxItems":12,"items":{
@@ -161,7 +164,7 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     };
     let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"protected":"Preserve text mapping, template original, baseline and all other variants."});
     let prompt=format!("Create a vector drawing of the exact target glyph, matching the reference image and the user's style instruction. Return JSON only with numeric advance and an array shapes. Each shape must have type (path, rect or ellipse), color (#RRGGBB), stroke (numeric width), fill (boolean), opacity (0..1). Paths have points: an array of numeric [x,y] pairs. Rectangles and ellipses have x,y,width,height (bounding box, not center or radii). Use coordinates 0..1000 with baseline y=800. Use at most 12 simple shapes and 100 points per path. No prose, code, SVG or nested JSON strings. Draw the requested glyph, not a generic letter or demonstration. Context: {context}");
-    let answer = request(&payload, &g, &prompt, true).await?;
+    let answer = request(&payload, &g, &prompt, true, None).await?;
     let cleaned = answer
         .trim()
         .trim_start_matches("```json")
@@ -228,4 +231,33 @@ pub fn validate_candidate(artwork: &Artwork) -> Result<(), String> {
         );
     }
     Ok(())
+}
+
+pub async fn generate_typography(payload: Value) -> Result<Value, String> {
+    let glyph = validate_target(&payload, true)?;
+    let prompt = format!(
+        r##"You are a typography style planner. A deterministic font engine will draw the EXACT text {:?}, preserving every character and counter. Do NOT invent points or paths. Read the user's Korean instruction and the current canvas. Return ONLY the style JSON.
+family: sans for 고딕/둥근/monoline, serif for 명조/serif, handwritten for 손글씨/handwriting.
+weight: 200 thin, 400 regular, 650 bold, 800 very bold. width: 100 normal, 85 narrow, 115 wide. slant: 0 upright, 10 right italic, negative left. roundness: 0 sharp, 80 rounded. tracking: 0 normal. color: #RRGGBB (default #242424).
+source is an editing intent, not a font name. The Korean phrases 현재 그림을 유지, 형태와 위치는 그대로, 기존 그림 보정 mean source=current. When the user asks to KEEP the current drawing you MUST choose current, even if the target is a normal letter. Otherwise choose glyph to draw the correct text. stroke: one consistent width for all strokes when source=current; default 48, bold 70, thin 24. Never change the requested text.
+Example: 기존 그림은 그대로 두고 획 두께만 60으로 맞춰줘 -> {{"family":"sans","weight":500,"width":100,"slant":0,"roundness":0,"tracking":0,"color":"#242424","source":"current","stroke":60}}.
+Examples: 굵고 둥근 고딕체 -> {{"family":"sans","weight":650,"width":100,"slant":0,"roundness":80,"tracking":0,"color":"#242424","source":"glyph","stroke":70}}.
+얇은 명조체 -> family serif, weight 250, roundness 0. 손글씨 -> family handwritten. User instruction: {}"##,
+        glyph.text,
+        payload["prompt"].as_str().unwrap_or("")
+    );
+    let answer = request(
+        &payload,
+        &glyph,
+        &prompt,
+        true,
+        Some(crate::typography::schema()),
+    )
+    .await?;
+    let style: crate::typography::Style = serde_json::from_str(answer.trim())
+        .map_err(|_| "AI가 글자 스타일을 올바르게 반환하지 않았어요. 다시 요청해 주세요.")?;
+    let generated = crate::typography::generate(&glyph, &style, payload["colorMode"] == "mono")?;
+    Ok(
+        json!({"artwork":generated.artwork,"sources":generated.sources,"generationNote":generated.note,"style":style}),
+    )
 }

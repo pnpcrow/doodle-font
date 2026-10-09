@@ -1,0 +1,32 @@
+[
+  {
+    "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/Variable/OTF/NotoSansCJKkr-VF.otf",
+    "sha256": "828d8415c3e601d1b7b94c2a86f8609ce4f78abebb92773724f3f004269059e8",
+    "name": "NotoSansCJKkr-VF.otf",
+    "bytes": 30733192
+  },
+  {
+    "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Serif/Variable/OTF/NotoSerifCJKkr-VF.otf",
+    "sha256": "3dbebb8d3cc7c949ad4488b11b5ffe61524958e3fe9a23d5b0f57be21513e306",
+    "name": "NotoSerifCJKkr-VF.otf",
+    "bytes": 55376392
+  },
+  {
+    "name": "Noto-OFL.txt",
+    "bytes": 4301,
+    "url": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/LICENSE",
+    "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+  },
+  {
+    "name": "SingleDay-Regular.ttf",
+    "bytes": 816524,
+    "url": "https://raw.githubusercontent.com/google/fonts/51303ca9e8ac9dcea7b12d307ba568fd0e6fcfca/ofl/singleday/SingleDay-Regular.ttf",
+    "sha256": "716ff67a4b0675b35c26d60a4bb83173f7d153ab754474ed36c3369593ca1ca8"
+  },
+  {
+    "name": "SingleDay-OFL.txt",
+    "bytes": 4352,
+    "url": "https://raw.githubusercontent.com/google/fonts/51303ca9e8ac9dcea7b12d307ba568fd0e6fcfca/ofl/singleday/OFL.txt",
+    "sha256": "397e83b05703a4240be51e2c3a2be1d0d7693d7a2d8b1ff367c26a2b9afc013e"
+  }
+]

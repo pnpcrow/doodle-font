@@ -226,6 +226,11 @@ async fn perform(payload: Value) -> Result<Value, String> {
         crate::ai::assist(payload)
             .await
             .map(|s| json!({"answer":s}))
+    } else if payload["config"]["local"] == true
+        && serde_json::from_value::<crate::model::Glyph>(payload["glyph"].clone())
+            .is_ok_and(|g| crate::typography::is_text(&g))
+    {
+        crate::ai::generate_typography(payload).await
     } else {
         crate::ai::generate(payload)
             .await

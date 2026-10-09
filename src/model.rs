@@ -9,6 +9,9 @@ pub struct Shape {
     #[serde(rename = "type")]
     pub kind: String,
     pub points: Vec<[f64; 2]>,
+    /// Normalized, closed font contours; their winding preserves counters/holes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub contours: Vec<Vec<[f64; 2]>>,
     pub x: f64,
     pub y: f64,
     pub width: f64,
@@ -52,6 +55,8 @@ pub struct Candidate {
     pub id: String,
     pub name: String,
     pub artwork: Artwork,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sources: Vec<Template>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Glyph {
@@ -122,7 +127,7 @@ impl Artwork {
                 "레이어 ID가 중복되었어요.",
             )?;
             check(
-                ["path", "rect", "ellipse", "image"].contains(&s.kind.as_str()),
+                ["path", "rect", "ellipse", "image", "outline"].contains(&s.kind.as_str()),
                 "지원하지 않는 레이어예요.",
             )?;
             check(
@@ -150,6 +155,18 @@ impl Artwork {
                         .flatten()
                         .all(|v| v.is_finite() && v.abs() <= 4000.),
                 "선의 좌표를 확인해 주세요.",
+            )?;
+            check(
+                s.contours.len() <= 2000
+                    && s.contours.iter().map(Vec::len).sum::<usize>() <= 30000
+                    && s.contours.iter().all(|c| {
+                        c.len() >= 3
+                            && c.iter()
+                                .flatten()
+                                .all(|v| v.is_finite() && v.abs() <= 4000.)
+                    })
+                    && (s.kind != "outline" || !s.contours.is_empty()),
+                "글자 윤곽선의 좌표와 개수를 확인해 주세요.",
             )?;
             if s.kind == "image" {
                 check(
@@ -267,6 +284,10 @@ impl Project {
             }
             for c in &g.candidates {
                 c.artwork.validate()?;
+                check(c.sources.len() <= 100, "후보 출처가 너무 많아요.")?;
+                for t in &c.sources {
+                    t.validate()?;
+                }
             }
         }
         for t in &self.templates {

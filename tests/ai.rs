@@ -164,7 +164,7 @@ fn drawing_action_returns_artwork_and_requires_nonempty_local_schema() {
     );
     let (tx, _status) = mpsc::channel();
     let result = doodle_core::local_ai::run(
-        json!({"action":"generate","glyph":new_glyph("A","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test","local":true}}),
+        json!({"action":"generate","glyph":new_glyph("☺","default","symbols",false),"config":{"provider":"openai","endpoint":url,"model":"test","local":true}}),
         std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)), tx,
     ).unwrap();
     assert!(result["artwork"]["shapes"]

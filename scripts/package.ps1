@@ -12,6 +12,8 @@ Copy-Item -LiteralPath 'target\release\doodle-font.exe' -Destination (Join-Path 
 Copy-Item -LiteralPath 'README.md' -Destination (Join-Path $destination 'README.md')
 Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.md' -Destination (Join-Path $destination 'THIRD_PARTY_NOTICES.md')
 New-Item -ItemType Directory -Force -Path (Join-Path $destination 'scripts'),(Join-Path $destination 'licenses'),(Join-Path $destination 'assets') | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $destination 'licenses\typefaces') | Out-Null
+Copy-Item -LiteralPath 'assets\fonts\Noto-OFL.txt','assets\fonts\SingleDay-OFL.txt','assets\fonts\manifest.json' -Destination (Join-Path $destination 'licenses\typefaces')
 Copy-Item -LiteralPath 'assets/local-ai-manifest.json' -Destination (Join-Path $destination 'assets/local-ai-manifest.json')
 Copy-Item -LiteralPath 'scripts\install-local-ai.ps1' -Destination (Join-Path $destination 'scripts\install-local-ai.ps1')
 $metadata = cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc | ConvertFrom-Json

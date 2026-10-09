@@ -1172,6 +1172,7 @@ impl Studio {
                         let mut xy = [s.x, s.y, s.width, s.height];
                         let is_path = s.kind == "path";
                         let is_image = s.kind == "image";
+                        let is_outline = s.kind == "outline";
                         let layer_enabled = enabled && !s.locked;
                         let mut rgba = color32(&s.color);
                         let mut name = s.name.clone();
@@ -1196,7 +1197,7 @@ impl Studio {
                                         Ok(())
                                     });
                                 }
-                                if ui.checkbox(&mut fill, "채우기").changed() {
+                                if !is_outline && ui.checkbox(&mut fill, "채우기").changed() {
                                     self.edit(|g| {
                                         g.artwork.shapes[i].fill = fill;
                                         Ok(())
@@ -1213,6 +1214,7 @@ impl Studio {
                                 });
                             }
                             if !is_image
+                                && !is_outline
                                 && ui
                                     .add(egui::Slider::new(&mut stroke, 1.0..=180.).text("획 굵기"))
                                     .changed()
@@ -2098,6 +2100,16 @@ impl Studio {
                     "AI가 그림 후보를 반환하지 않았어요. 설명만 있는 응답은 채택할 수 없습니다."
                 })?;
             doodle_core::ai::validate_candidate(&artwork)?;
+            let sources: Vec<Template> = if let Some(value) = result.get("sources") {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| "후보의 출처 정보를 읽지 못했어요.")?
+            } else {
+                vec![]
+            };
+            check(sources.len() <= 100, "후보 출처가 너무 많아요.")?;
+            for source in &sources {
+                source.validate()?;
+            }
             let g = self
                 .project
                 .glyphs
@@ -2114,6 +2126,7 @@ impl Studio {
                 id: uid(),
                 name: format!("AI 후보 {}", g.candidates.len() + 1),
                 artwork,
+                sources,
             };
             self.candidate_review = Some((id.to_owned(), candidate.id.clone()));
             g.candidates.push(candidate);
@@ -2121,6 +2134,9 @@ impl Studio {
                 "‘{}’의 그림 후보를 만들었어요. 후보 보기에서 비교하고 채택해 주세요.",
                 g.text
             );
+            if let Some(note) = result["generationNote"].as_str() {
+                self.ai_answer.push_str(&format!("\n{note}"));
+            }
             self.changed();
         } else {
             self.ai_answer = result["answer"]
@@ -2181,6 +2197,9 @@ impl Studio {
                     });
                 });
             if let Some(candidate) = g.candidates.iter().find(|c| c.id == candidate_id) {
+                if !candidate.sources.is_empty() {
+                    ui.label(RichText::new("공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.").size(12.).color(MUTED));
+                }
                 ui.columns(2, |columns| {
                     for (column, (label, artwork, key)) in columns.iter_mut().zip([
                         (
@@ -2728,7 +2747,11 @@ fn glyph_bytes(g: &Glyph) -> usize {
     fn art(a: &Artwork) -> usize {
         a.shapes
             .iter()
-            .map(|s| s.src.as_ref().map_or(0, String::len) + s.points.len() * 16 + 256)
+            .map(|s| {
+                s.src.as_ref().map_or(0, String::len)
+                    + (s.points.len() + s.contours.iter().map(Vec::len).sum::<usize>()) * 16
+                    + 256
+            })
             .sum()
     }
     art(&g.artwork)
@@ -2762,11 +2785,18 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
-        if ["ai-candidate-live", "ai-candidate-accept"].contains(&qa_view.as_str()) {
+        if [
+            "ai-candidate-live",
+            "ai-typography-live",
+            "ai-candidate-accept",
+            "ai-typography",
+        ]
+        .contains(&qa_view.as_str())
+        {
             input
                 .events
                 .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
-            let (rect, press_frame) = if qa_view == "ai-candidate-live" {
+            let (rect, press_frame) = if qa_view.ends_with("-live") {
                 (self.qa_ai_send, 3)
             } else {
                 (self.qa_candidate_accept, 5)
@@ -2893,11 +2923,32 @@ impl eframe::App for Studio {
                         }
                     }
                     "ai-candidate-existing" => self.open_candidate_review(),
-                    "ai-candidate-live" => {
+                    "ai-typography" => {
+                        self.local_installed = true;
+                        let g = &self.project.glyphs[0];
+                        let generated = doodle_core::typography::generate(
+                            g,
+                            &doodle_core::typography::Style {
+                                weight: 650,
+                                roundness: 80,
+                                ..Default::default()
+                            },
+                            true,
+                        )
+                        .unwrap();
+                        let (tx, rx) = mpsc::channel();
+                        self.job = Some(rx);
+                        tx.send(Ok(Job::AiReply(g.id.clone(),true,serde_json::json!({"artwork":generated.artwork,"sources":generated.sources,"generationNote":generated.note})))).unwrap();
+                        self.poll();
+                        assert!(self.candidate_review.is_some());
+                    }
+                    "ai-candidate-live" | "ai-typography-live" => {
                         self.tab = 3;
-                        self.selected = 1;
+                        let typography =
+                            std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-typography-live");
+                        self.selected = if typography { 0 } else { 1 };
                         self.ai_action = true;
-                        self.ai_prompt = "참고 그림처럼 노란 원 안에 검은 눈 두 개와 웃는 입이 있는 얼굴을 만들어 줘.".into();
+                        self.ai_prompt = if typography { "A를 굵고 둥근 고딕체로 정확하게 그려줘." } else { "참고 그림처럼 노란 원 안에 검은 눈 두 개와 웃는 입이 있는 얼굴을 만들어 줘." }.into();
                         assert!(
                             self.local_installed,
                             "live test needs installed local models"
@@ -2919,6 +2970,23 @@ impl eframe::App for Studio {
                 }
             }
             ctx.request_repaint();
+            if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-typography")
+                && ctx.cumulative_frame_nr() == 10
+            {
+                assert!(self.candidate_review.is_none());
+                assert_eq!(self.project.glyphs[0].artwork.shapes[0].kind, "outline");
+                assert_eq!(self.project.glyphs[0].sources.len(), 1);
+                self.undo(false);
+                assert_eq!(self.project.glyphs[0].artwork.shapes.len(), 2);
+                assert!(self.project.glyphs[0].sources.is_empty());
+                self.undo(true);
+                assert_eq!(self.project.glyphs[0].sources.len(), 1);
+                self.save();
+                let saved = storage::read(&self.save_path).unwrap();
+                assert_eq!(saved.glyphs[0].sources.len(), 1);
+                self.open_candidate_review();
+                self.notify("글자 형태 · 채택 · 출처 · 실행 취소 · 저장 검증 통과");
+            }
             if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-candidate-accept")
                 && ctx.cumulative_frame_nr() == 10
             {
@@ -3019,8 +3087,8 @@ impl eframe::App for Studio {
                 self.notify("UI 자동 검증 통과: 그리기 · 실행 취소 · 다시 실행 · 원본 보존 · 저장");
             }
             let install_flow = std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow");
-            let candidate_live =
-                std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-candidate-live");
+            let candidate_live = ["ai-candidate-live", "ai-typography-live"]
+                .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str());
             if candidate_live && self.ai_started.elapsed() > Duration::from_secs(420) {
                 panic!("Local candidate UI timed out: {}", self.ai_status);
             }
@@ -3030,7 +3098,12 @@ impl eframe::App for Studio {
                     "local drawing must open candidate review: {}",
                     self.ai_answer
                 );
-                assert_eq!(self.project.glyphs[1].candidates.len(), 1);
+                assert_eq!(self.project.glyphs[self.selected].candidates.len(), 1);
+                if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-typography-live") {
+                    let candidate = &self.project.glyphs[self.selected].candidates[0];
+                    assert_eq!(candidate.artwork.shapes[0].kind, "outline");
+                    assert!(!candidate.sources.is_empty());
+                }
                 self.save();
             }
             if install_flow && self.ai_started.elapsed() > Duration::from_secs(90) {

@@ -55,6 +55,7 @@ fn candidate_cannot_overwrite_blank_or_locked() {
         id: "c".into(),
         name: "candidate".into(),
         artwork: g.artwork.clone(),
+        sources: vec![],
     });
     g.status = "blank".into();
     assert!(accept(&mut g, "c").is_err());

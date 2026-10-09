@@ -60,6 +60,7 @@ pub fn new_shape(kind: &str) -> Shape {
         .into(),
         kind: kind.into(),
         points: vec![],
+        contours: vec![],
         x: 150.,
         y: 150.,
         width: 600.,
@@ -167,13 +168,35 @@ pub fn accept(g: &mut Glyph, id: &str) -> Result<(), String> {
         editable(g) && !matches!(g.status.as_str(), "blank" | "unsupported"),
         "잠금·빈칸·미지원 항목은 AI 적용에서 보호돼요.",
     )?;
-    g.artwork = g
+    let candidate = g
         .candidates
         .iter()
         .find(|c| c.id == id)
         .ok_or("후보를 찾을 수 없어요.")?
-        .artwork
         .clone();
+    for source in &candidate.sources {
+        source.validate()?;
+        check(
+            source.permissions.edit && source.permissions.ai,
+            "후보의 사용 권한을 확인해 주세요.",
+        )?;
+    }
+    check(
+        g.sources.len()
+            + candidate
+                .sources
+                .iter()
+                .filter(|t| !g.sources.iter().any(|s| s.id == t.id))
+                .count()
+            <= 100,
+        "참조 출처를 더 저장할 수 없어요.",
+    )?;
+    g.artwork = candidate.artwork;
+    for source in candidate.sources {
+        if !g.sources.iter().any(|s| s.id == source.id) {
+            g.sources.push(source);
+        }
+    }
     g.status = "edited".into();
     Ok(())
 }
