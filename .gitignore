@@ -9,5 +9,8 @@ __pycache__/
 *.log
 test-results/
 artifacts/
+src-tauri/target/
+src-tauri/gen/
+*.tsbuildinfo
 *.spec
 !*.test.ts
