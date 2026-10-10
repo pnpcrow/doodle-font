@@ -84,7 +84,18 @@ fn main() {
     let directory = args.get(1).expect("output directory");
     std::fs::create_dir_all(directory).unwrap();
     let style_suite = args.get(2).is_some_and(|s| s == "--styles");
-    let cases = if style_suite {
+    let layout_suite = args.get(2).is_some_and(|s| s == "--layout");
+    let cases = if layout_suite {
+        vec![
+            ("H", "default", "H를 굵기 500의 검은 고딕체로 만들어줘."),
+            ("x", "default", "x를 굵기 500의 검은 고딕체로 만들어줘."),
+            (
+                "g",
+                "default",
+                "g를 굵기 500의 검은 고딕체로 만들어줘. 아래로 내려오는 획을 살려줘.",
+            ),
+        ]
+    } else if style_suite {
         vec![("한","ko","선택한 한 글자를 얇고 단정한 명조체로 그려줘."),("가","ko","가 글자를 따뜻한 손글씨로 만들어줘."),("A","default","현재 그림을 유지해서 보정해줘. 두 획 모두 굵기를 70으로 통일하고 글자의 형태와 위치는 그대로 유지해줘.")]
     } else {
         vec![
@@ -124,6 +135,27 @@ fn main() {
         let evidence = match result {
             Ok(result) => {
                 let art: Artwork = serde_json::from_value(result["artwork"].clone()).unwrap();
+                if layout_suite {
+                    let bounds = doodle_core::glyph_layout::ink_bounds(&art)
+                        .unwrap()
+                        .unwrap();
+                    assert!((bounds[0] - 80.).abs() < 0.01);
+                    if *text == "g" {
+                        assert!(bounds[3] > 840. && bounds[3] <= 960.01);
+                    }
+                    if *text == "x" {
+                        assert!(bounds[1] > 280.);
+                    }
+                    if *text == "H" {
+                        assert!((bounds[1] - 200.).abs() < 35.);
+                    }
+                    let image = doodle_core::ai::canvas_image(&art).unwrap();
+                    use base64::Engine;
+                    let image = base64::engine::general_purpose::STANDARD
+                        .decode(image.split_once(',').unwrap().1)
+                        .unwrap();
+                    std::fs::write(format!("{directory}/{i}-guides.png"), image).unwrap();
+                }
                 font::raster(&art, 512)
                     .unwrap()
                     .save(format!("{directory}/{i}.png"))

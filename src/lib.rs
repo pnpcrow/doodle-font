@@ -4,6 +4,7 @@ pub mod ai_pipeline;
 pub mod ai_settings;
 pub mod document;
 pub mod font;
+pub mod glyph_layout;
 pub mod local_ai;
 pub mod model;
 pub mod needle;

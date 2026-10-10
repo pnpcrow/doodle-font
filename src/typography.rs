@@ -1,6 +1,7 @@
 //! Local AI chooses style; a font shaper preserves the exact text and its counters.
 use crate::{
     document::{new_shape, uid},
+    glyph_layout::{self, BASELINE, CAP_TOP, DESCENT_BOTTOM, EM},
     model::*,
 };
 use serde::{Deserialize, Serialize};
@@ -291,7 +292,31 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
         shaped.glyph_infos().iter().all(|g| g.glyph_id != 0),
         "일부 문자의 정확한 자형을 찾지 못했어요.",
     )?;
-    let unit = 1000. / face.units_per_em() as f64;
+    let unit = EM / face.units_per_em() as f64;
+    // A typeface-wide scale keeps H/x/g and punctuation in the same coordinate system.
+    // Glyph bounding-box fitting must never raise descenders or enlarge short lowercase.
+    let cap = face
+        .capital_height()
+        .filter(|h| *h > 0)
+        .map(f64::from)
+        .or_else(|| {
+            face.glyph_index('H')
+                .and_then(|id| face.glyph_bounding_box(id))
+                .map(|b| b.y_max as f64)
+        })
+        .unwrap_or(face.units_per_em() as f64 * 0.7)
+        * unit;
+    let scale = (BASELINE - CAP_TOP) / cap;
+    let descent = "gjpqy"
+        .chars()
+        .filter_map(|c| {
+            face.glyph_index(c)
+                .and_then(|id| face.glyph_bounding_box(id))
+        })
+        // Integer table bounds can round a variable outline inward by less than one unit.
+        .map(|b| ((-f64::from(b.y_min)).max(0.) + 1.) * unit)
+        .fold(1_f64, f64::max);
+    let descent_scale = ((DESCENT_BOTTOM - BASELINE) / descent).min(scale);
     let mut contours = vec![];
     let mut pen = 0.;
     for (info, position) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
@@ -305,7 +330,7 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
                     .map(|p| {
                         [
                             pen + (p[0] + position.x_offset as f64) * unit,
-                            800. - (p[1] + position.y_offset as f64) * unit,
+                            BASELINE - (p[1] + position.y_offset as f64) * unit,
                         ]
                     })
                     .collect::<Vec<_>>(),
@@ -314,47 +339,29 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
         pen += position.x_advance as f64 * unit + style.tracking as f64;
     }
     check(!contours.is_empty(), "그릴 수 있는 글자 윤곽이 없어요.")?;
-    let min_x = contours
-        .iter()
-        .flatten()
-        .map(|p| p[0])
-        .fold(f64::INFINITY, f64::min);
-    let max_x = contours
-        .iter()
-        .flatten()
-        .map(|p| p[0])
-        .fold(f64::NEG_INFINITY, f64::max);
-    let min_y = contours
-        .iter()
-        .flatten()
-        .map(|p| p[1])
-        .fold(f64::INFINITY, f64::min);
-    let max_y = contours
-        .iter()
-        .flatten()
-        .map(|p| p[1])
-        .fold(f64::NEG_INFINITY, f64::max);
-    // One scale for all contours preserves component proportions and small counters.
-    let scale = (820. / (max_x - min_x))
-        .min(760. / (max_y - min_y))
-        .min(0.82);
-    let center = (min_x + max_x) / 2.;
     let mut final_contours = vec![];
     for contour in contours {
         let points: Vec<_> = contour
             .into_iter()
             .map(|p| {
-                let y = 800. + (p[1] - 800.) * scale;
+                let y = BASELINE
+                    + (p[1] - BASELINE)
+                        * if p[1] > BASELINE {
+                            descent_scale
+                        } else {
+                            scale
+                        };
                 [
-                    500. + (p[0] - center) * scale * style.width as f64 / 100.
-                        + (800. - y) * (style.slant as f64).to_radians().tan(),
+                    p[0] * scale * style.width as f64 / 100.
+                        + (BASELINE - y) * (style.slant as f64).to_radians().tan(),
                     y,
                 ]
             })
             .collect();
         final_contours.push(rounded(&points, style.roundness as f64 * 0.09));
     }
-    // Keep every stroke inside the canvas after width/slant changes.
+    // Fit only horizontal overflow; anchor visible ink at one shared left sidebearing.
+    // The selected advance is kept, so the canvas and exported font use the same width.
     let lo = final_contours
         .iter()
         .flatten()
@@ -365,11 +372,18 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
         .flatten()
         .map(|p| p[0])
         .fold(f64::NEG_INFINITY, f64::max);
-    let fit = (900. / (hi - lo)).min(1.);
-    let center = (lo + hi) / 2.;
+    let [left, right] = glyph_layout::horizontal_bounds(glyph.artwork.advance);
+    let fit = ((right - left) / (hi - lo)).min(1.);
     for p in final_contours.iter_mut().flatten() {
-        p[0] = 500. + (p[0] - center) * fit;
+        p[0] = left + (p[0] - lo) * fit;
     }
+    check(
+        final_contours
+            .iter()
+            .flatten()
+            .all(|p| (0.0..=DESCENT_BOTTOM + 0.01).contains(&p[1])),
+        "글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요.",
+    )?;
     let mut shape = new_shape("outline");
     shape.name = format!("{} · 글자 형태", glyph.text);
     shape.x = 0.;
@@ -386,7 +400,7 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
     shape.contours = final_contours;
     let artwork = Artwork {
         shapes: vec![shape],
-        advance: 1000.,
+        advance: glyph.artwork.advance,
     };
     crate::ai::validate_candidate(&artwork)?;
     Ok(Generated {

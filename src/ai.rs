@@ -22,9 +22,26 @@ pub fn validate_target(payload: &Value, editing: bool) -> Result<Glyph, String> 
     Ok(g)
 }
 pub fn canvas_image(artwork: &Artwork) -> Result<String, String> {
+    use crate::glyph_layout::{self, EM, SNAPSHOT};
     use base64::Engine;
-    let image = crate::font::raster(artwork, 512)?;
-    let mut white = image::RgbaImage::from_pixel(512, 512, image::Rgba([255, 255, 255, 255]));
+    let image = crate::font::raster(artwork, SNAPSHOT)?;
+    let mut white =
+        image::RgbaImage::from_pixel(SNAPSHOT, SNAPSHOT, image::Rgba([255, 255, 255, 255]));
+    for (y, _, [r, g, b]) in glyph_layout::guides() {
+        let y = (y * SNAPSHOT as f64 / EM).round() as u32;
+        for x in 0..SNAPSHOT {
+            white.put_pixel(x, y, image::Rgba([r, g, b, 255]));
+        }
+    }
+    for x in [
+        glyph_layout::horizontal_bounds(artwork.advance)[0],
+        artwork.advance.min(EM),
+    ] {
+        let x = ((x * SNAPSHOT as f64 / EM).round() as u32).min(SNAPSHOT - 1);
+        for y in 1..SNAPSHOT {
+            white.put_pixel(x, y, image::Rgba([161, 181, 156, 255]));
+        }
+    }
     image::imageops::overlay(&mut white, &image, 0, 0);
     let mut bytes = std::io::Cursor::new(Vec::new());
     white
@@ -37,7 +54,8 @@ pub fn canvas_image(artwork: &Artwork) -> Result<String, String> {
 }
 pub async fn assist(payload: Value) -> Result<String, String> {
     let g = validate_target(&payload, false)?;
-    let prompt=format!("You are Doodle Font's font drawing assistant. Reply in Korean, concise and specific. The image is the current glyph canvas, coordinates 0..1000, baseline y=800. Explain what you see and suggest changes relevant to the user's request. Do not claim to have edited anything. Glyph: {}, locale: {}, codepoints: {:?}. User request: {}",g.text,g.locale,g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),payload["prompt"].as_str().unwrap_or(""));
+    let layout = crate::glyph_layout::context(&g);
+    let prompt=format!("You are Doodle Font's font drawing assistant. Reply in Korean, concise and specific. Explain what you see and suggest changes relevant to the user's request. The pale horizontal/vertical lines are editing guides, not part of the glyph. If an image is attached, its 512 pixels represent 1000 font units, not 512 font units. Keep cap height, lowercase proportions and descenders distinct; do not move a descender above the baseline. Do not claim to have edited anything. Layout: {layout}. Glyph: {}, locale: {}, codepoints: {:?}. User request: {}",g.text,g.locale,g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),payload["prompt"].as_str().unwrap_or(""));
     request(&payload, &g, &prompt, false, None).await
 }
 async fn request(
@@ -162,8 +180,8 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     } else {
         None
     };
-    let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"protected":"Preserve text mapping, template original, baseline and all other variants."});
-    let prompt=format!("Create a vector drawing of the exact target glyph, matching the reference image and the user's style instruction. Return JSON only with numeric advance and an array shapes. Each shape must have type (path, rect or ellipse), color (#RRGGBB), stroke (numeric width), fill (boolean), opacity (0..1). Paths have points: an array of numeric [x,y] pairs. Rectangles and ellipses have x,y,width,height (bounding box, not center or radii). Use coordinates 0..1000 with baseline y=800. Use at most 12 simple shapes and 100 points per path. No prose, code, SVG or nested JSON strings. Draw the requested glyph, not a generic letter or demonstration. Context: {context}");
+    let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"layout":crate::glyph_layout::context(&g),"protected":"Preserve text mapping, template original, baseline and all other variants."});
+    let prompt=format!("Create a vector drawing of the exact target glyph, matching the reference image and the user's style instruction. Return JSON only with numeric advance and an array shapes. Each shape must have type (path, rect or ellipse), color (#RRGGBB), stroke (numeric width), fill (boolean), opacity (0..1). Paths have points: an array of numeric [x,y] pairs. Rectangles and ellipses have x,y,width,height (bounding box, not center or radii). Follow the supplied layout in font units, not image pixels. Baseline y=800 is the bottom of the main letter body, NOT the bottom of every glyph: g/j/p/q/y need strokes below y=800. Capital tops are near y=200; lowercase bodies stay smaller and keep their x-height. The y=500 midline is only a visual reference. Preserve natural overshoot, accents and punctuation position. For new letters use the fixed left sidebearing, existing advance and right ink limit, accounting for half the stroke width at the edges. Never center each letter in the square or rescale each letter to fill it. For requested existing-art edits or explicit positioning, preserve that placement. Pale guide lines in the reference are NOT glyph strokes; never trace them. Use at most 12 simple shapes and 100 points per path. No prose, code, SVG or nested JSON strings. Draw the requested glyph, not a generic letter or demonstration. Context: {context}");
     let answer = request(&payload, &g, &prompt, true, None).await?;
     let cleaned = answer
         .trim()
@@ -212,7 +230,9 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     if data.get("advance").is_none() {
         data["advance"] = json!(g.artwork.advance)
     }
-    let a: Artwork = serde_json::from_value(data).map_err(|_| "AI 그림 형식이 맞지 않아요.")?;
+    let mut a: Artwork = serde_json::from_value(data).map_err(|_| "AI 그림 형식이 맞지 않아요.")?;
+    validate_candidate(&a)?;
+    crate::glyph_layout::place_api_candidate(&g, payload["prompt"].as_str().unwrap_or(""), &mut a)?;
     validate_candidate(&a)?;
     Ok(a)
 }
@@ -242,8 +262,10 @@ weight: 200 thin, 400 regular, 650 bold, 800 very bold. width: 100 normal, 85 na
 source is an editing intent, not a font name. The Korean phrases 현재 그림을 유지, 형태와 위치는 그대로, 기존 그림 보정 mean source=current. When the user asks to KEEP the current drawing you MUST choose current, even if the target is a normal letter. Otherwise choose glyph to draw the correct text. stroke: one consistent width for all strokes when source=current; default 48, bold 70, thin 24. Never change the requested text.
 Example: 기존 그림은 그대로 두고 획 두께만 60으로 맞춰줘 -> {{"family":"sans","weight":500,"width":100,"slant":0,"roundness":0,"tracking":0,"color":"#242424","source":"current","stroke":60}}.
 Examples: 굵고 둥근 고딕체 -> {{"family":"sans","weight":650,"width":100,"slant":0,"roundness":80,"tracking":0,"color":"#242424","source":"glyph","stroke":70}}.
+The deterministic engine uses the following layout for fresh glyphs; it keeps the reference position for source=current. Pale image guides are not glyph strokes. Layout: {}.
 얇은 명조체 -> family serif, weight 250, roundness 0. 손글씨 -> family handwritten. User instruction: {}"##,
         glyph.text,
+        crate::glyph_layout::context(&glyph),
         payload["prompt"].as_str().unwrap_or("")
     );
     let answer = request(

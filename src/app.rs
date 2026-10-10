@@ -1717,14 +1717,8 @@ impl Studio {
                             );
                         }
                         if self.guides {
-                            for (y, name) in
-                                [(200., "대문자 높이"), (500., "중심선"), (800., "기준선")]
-                            {
-                                let c = if y == 800. {
-                                    Color32::from_rgb(219, 151, 127)
-                                } else {
-                                    Color32::from_rgb(194, 202, 185)
-                                };
+                            for (y, name, [r, g, b]) in doodle_core::glyph_layout::guides() {
+                                let c = Color32::from_rgb(r, g, b);
                                 painter.line_segment(
                                     [to_screen([0., y]), to_screen([1000., y])],
                                     Stroke::new(1_f32, c),
@@ -1737,11 +1731,15 @@ impl Studio {
                                     c,
                                 );
                             }
-                            let x = advance.min(1000.);
-                            painter.line_segment(
-                                [to_screen([x, 0.]), to_screen([x, 1000.])],
-                                Stroke::new(1_f32, Color32::from_rgb(161, 181, 156)),
-                            );
+                            for x in [
+                                doodle_core::glyph_layout::horizontal_bounds(advance)[0],
+                                advance.min(1000.),
+                            ] {
+                                painter.line_segment(
+                                    [to_screen([x, 0.]), to_screen([x, 1000.])],
+                                    Stroke::new(1_f32, Color32::from_rgb(161, 181, 156)),
+                                );
+                            }
                         }
                         let g = &self.project.glyphs[self.selected];
                         if current_status == "system"
@@ -3453,6 +3451,22 @@ impl eframe::App for Studio {
                             assert!(self.local_installed);
                             self.ai_prompt = "A를 굵고 둥근 고딕체로 그려줘.".into();
                         }
+                    }
+                    "ai-layout" => {
+                        self.group = 0;
+                        self.select_text("g");
+                        let generated = doodle_core::typography::generate(
+                            &self.project.glyphs[self.selected],
+                            &Default::default(),
+                            true,
+                        )
+                        .unwrap();
+                        let glyph = &mut self.project.glyphs[self.selected];
+                        glyph.artwork = generated.artwork;
+                        glyph.sources = generated.sources;
+                        glyph.status = "edited".into();
+                        self.refresh_catalog();
+                        self.ai_dock_collapsed = true;
                     }
                     "ai-typography" => {
                         self.local_installed = true;

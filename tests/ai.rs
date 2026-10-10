@@ -74,6 +74,10 @@ fn both_provider_contracts_preserve_exact_target() {
         assert!(req.contains("U+200D"));
         assert!(req.contains("ja"));
         assert!(req.contains("reference"));
+        assert!(req.contains("baselineY"));
+        assert!(req.contains("descenderBottomY"));
+        assert!(req.contains("leftInkX"));
+        assert!(req.contains("pixelsPerUnit"));
         assert!(req.contains("image/png"));
         assert!(req.contains(if provider == "openai" {
             "image_url"
@@ -106,6 +110,66 @@ fn canvas_snapshot_preserves_color_on_white() {
     assert_eq!(image.dimensions(), (512, 512));
     assert_eq!(image.get_pixel(0, 0).0, [255, 255, 255, 255]);
     assert!(image.pixels().any(|p| p[0] > p[2].saturating_add(50)));
+}
+
+#[test]
+fn both_providers_receive_layout_and_fresh_candidates_share_the_left_bearing() {
+    for provider in ["openai", "anthropic"] {
+        let answer = r#"{"advance":1000,"shapes":[{"type":"path","points":[[350,400],[550,800],[460,920]],"stroke":20}]}"#;
+        let (url, rx) = mock(provider, answer);
+        let mut g = new_glyph("g", "default", "latin", false);
+        g.artwork.advance = 700.;
+        let result = run(json!({"glyph":g,"config":{"provider":provider,"endpoint":url,"model":"test"},"prompt":"검은 고딕체로 그려줘","sendReference":false})).unwrap();
+        let b = doodle_core::glyph_layout::ink_bounds(&result)
+            .unwrap()
+            .unwrap();
+        assert!((b[0] - 80.).abs() < 0.01);
+        assert!(b[3] > 800.);
+        assert_eq!(result.shapes[0].points[2][1], 920.);
+        assert_eq!(result.advance, 700.);
+        let request = rx.recv().unwrap();
+        let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        let prompt = body["messages"][0]["content"].as_str().unwrap();
+        assert!(prompt.contains("\"baselineY\":800.0"));
+        assert!(prompt.contains("\"descenderBottomY\":960.0"));
+        assert!(prompt.contains("\"advance\":700.0"));
+        assert!(prompt.contains("g/j/p/q/y"));
+        assert!(!request.contains("image/png"));
+    }
+}
+
+#[test]
+fn provider_response_without_required_descender_cannot_become_a_candidate() {
+    let (url, _rx) = mock(
+        "openai",
+        r#"{"shapes":[{"type":"path","points":[[200,400],[500,780]],"stroke":20}]}"#,
+    );
+    let result = run(
+        json!({"glyph":new_glyph("p","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"test"},"prompt":"p를 그려줘"}),
+    );
+    assert!(result.unwrap_err().contains("하강"));
+}
+
+#[test]
+fn local_style_planner_receives_the_same_layout_contract() {
+    let (url, rx) = mock(
+        "openai",
+        &serde_json::to_string(&doodle_core::typography::Style::default()).unwrap(),
+    );
+    let result = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(ai::generate_typography(json!({"glyph":new_glyph("q","default","latin",false),"config":{"provider":"openai","endpoint":url,"model":"local-test","local":true},"prompt":"q를 그려줘","sendReference":true}))).unwrap();
+    let art = serde_json::from_value(result["artwork"].clone()).unwrap();
+    assert!(
+        doodle_core::glyph_layout::ink_bounds(&art)
+            .unwrap()
+            .unwrap()[3]
+            > 840.
+    );
+    let request = rx.recv().unwrap();
+    assert!(request.contains("baselineY"));
+    assert!(request.contains("descenderBottomY"));
+    assert!(request.contains("leftInkX"));
+    assert!(request.contains("pixelsPerUnit"));
+    assert!(request.contains("image/png"));
 }
 #[test]
 fn cancelling_active_request_returns_promptly() {

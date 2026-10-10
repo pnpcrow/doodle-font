@@ -234,7 +234,12 @@ fn outline(shapes: &[&Shape], cff_width: Option<u16>) -> Result<Outline, String>
     let pts: Vec<[i16; 2]> = contours
         .iter()
         .flatten()
-        .map(|p| [p[0].round() as i16, (800. - p[1]).round() as i16])
+        .map(|p| {
+            [
+                p[0].round() as i16,
+                (crate::glyph_layout::BASELINE - p[1]).round() as i16,
+            ]
+        })
         .collect();
     let bounds = [
         pts.iter().map(|p| p[0]).min().unwrap(),

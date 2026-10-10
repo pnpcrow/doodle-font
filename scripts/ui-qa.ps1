@@ -6,7 +6,7 @@ cargo build --features ui-qa --bin doodle-font
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 $runId = [guid]::NewGuid().ToString()
 $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId"
-$views = @('editor','preview','templates','settings','export','hangul','ai-ready','ai-busy','ai-recover','interaction','ai-candidates','ai-candidate-accept','ai-candidate-invalid','ai-typography','decision-settings')
+$views = @('editor','preview','templates','settings','export','hangul','ai-ready','ai-busy','ai-recover','interaction','ai-candidates','ai-candidate-accept','ai-candidate-invalid','ai-typography','ai-layout','decision-settings')
 if ($LocalAi) { $views += 'ai-candidate-live','ai-typography-live' }
 if ($DecisionAi) { $views += 'decision-fast-live','decision-gemma-live' }
 if ($ConnectionsOnly) { $views = @() }
