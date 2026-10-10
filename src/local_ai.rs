@@ -60,20 +60,19 @@ impl Drop for Server {
     }
 }
 impl Server {
-    async fn start(embedding: bool, cancel: &AtomicBool) -> Result<Self, String> {
+    async fn start(cancel: &AtomicBool) -> Result<Self, String> {
         if !installed() {
             return Err("AI 연결 화면에서 '로컬 AI 설치'를 눌러 주세요.".into());
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
         let key = uuid::Uuid::new_v4().to_string();
-        let stem = if embedding { "embedding" } else { "assistant" };
         let mut command = Command::new(executable());
         command
             .arg("-m")
-            .arg(root().join(format!("{stem}.gguf")))
+            .arg(root().join("assistant.gguf"))
             .arg("--mmproj")
-            .arg(root().join(format!("{stem}-vision.gguf")))
+            .arg(root().join("assistant-vision.gguf"))
             .args([
                 "--host",
                 "127.0.0.1",
@@ -96,17 +95,6 @@ impl Server {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        if embedding {
-            command.args([
-                "--embedding",
-                "--pooling",
-                "mean",
-                "-b",
-                "8192",
-                "-ub",
-                "8192",
-            ]);
-        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -154,7 +142,7 @@ impl Server {
     }
 }
 
-/// Cancellation drops the active HTTP future and both owned server processes.
+/// Cancellation drops the active HTTP future and owned Gemma process.
 pub fn run(
     mut payload: Value,
     cancel: Arc<AtomicBool>,
@@ -168,34 +156,8 @@ pub fn run(
         let work = async {
             crate::ai::validate_target(&payload, payload["action"] != "assist")?;
             if payload["config"]["provider"] == "local" {
-                let _ = status.send("EmbeddingGemma 2 준비 중".into());
-                let embedding = Server::start(true, &cancel).await?;
-                let _ = status.send("프롬프트와 그림을 함께 분석 중".into());
-                let glyph: crate::model::Glyph = serde_json::from_value(payload["glyph"].clone()).map_err(|e|e.to_string())?;
-                let picture = crate::ai::canvas_image(&glyph.artwork)?;
-                let mut input = vec![json!({"content":[{"type":"text","text":format!("task: sentence similarity | query: {}",payload["prompt"].as_str().unwrap_or(""))},{"type":"image_url","image_url":{"url":picture}}]})];
-                let references: Vec<crate::model::Template>=payload["references"].as_array().into_iter().flatten().take(8).filter_map(|v|serde_json::from_value(v.clone()).ok()).collect();
-                let references: Vec<_>=references.iter().filter(|t|t.permissions.ai && t.permissions.display && t.original.is_some()).collect();
-                for template in &references {
-                    input.push(json!({"content":[{"type":"image_url","image_url":{"url":crate::ai::canvas_image(template.original.as_ref().unwrap())?}}]}));
-                }
-                let client = reqwest::Client::builder().no_proxy().timeout(Duration::from_secs(180)).build().map_err(|e|e.to_string())?;
-                let response: Value = client.post(format!("{}/embeddings", embedding.endpoint)).bearer_auth(&embedding.key).json(&json!({"input":input,"encoding_format":"float"})).send().await.map_err(|e|e.to_string())?.error_for_status().map_err(|e|e.to_string())?.json().await.map_err(|e|e.to_string())?;
-                let vector = response["data"][0]["embedding"].as_array().ok_or("멀티모달 임베딩 응답이 없어요.")?;
-                if vector.len()!=768 || vector.iter().any(|v|v.as_f64().is_none_or(|n|!n.is_finite())) { return Err("EmbeddingGemma 2 분석 결과가 올바르지 않아요.".into()); }
-                // The vector is a semantic fingerprint, not a generated explanation.
-                let embedding_value = json!(vector);
-                let mut similar: Vec<(String,f64)>=references.iter().enumerate().filter_map(|(i,t)|{
-                    let other=response["data"][i+1]["embedding"].as_array()?;
-                    if other.len()!=vector.len(){return None;}
-                    let score=vector.iter().zip(other).map(|(a,b)|a.as_f64().unwrap_or(0.)*b.as_f64().unwrap_or(0.)).sum();
-                    Some((t.name.clone(),score))
-                }).collect();
-                similar.sort_by(|a,b|b.1.total_cmp(&a.1));
-                let matches=similar.iter().take(3).map(|(n,s)|format!("{n} ({s:.2})")).collect::<Vec<_>>().join(" · ");
-                drop(embedding);
                 let _ = status.send("Gemma 4 E2B 어시스턴트 준비 중".into());
-                let assistant = Server::start(false, &cancel).await?;
+                let assistant = Server::start(&cancel).await?;
                 payload["config"] = json!({"provider":"openai","endpoint":assistant.endpoint,"model":"local","key":assistant.key,"local":true});
                 payload["sendReference"] = json!(true);
                 let _ = status.send(if payload["action"] == "generate" {
@@ -203,10 +165,7 @@ pub fn run(
                 } else {
                     "그림을 확인하고 답변 작성 중"
                 }.into());
-                let mut result = perform(payload).await?;
-                result["embedding"] = embedding_value;
-                result["matches"] = json!(matches);
-                Ok(result)
+                perform(payload).await
             } else {
                 let _ = status.send("AI가 그림을 확인하고 작업 중".into());
                 perform(payload).await

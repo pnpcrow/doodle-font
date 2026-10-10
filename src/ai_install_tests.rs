@@ -158,9 +158,10 @@ fn missing_report_checks_runtime_dependencies_and_model_sizes() {
     let root = folder();
     fs::create_dir(root.join("runtime")).unwrap();
     fs::write(root.join("runtime/llama-server.exe"), b"stub").unwrap();
-    fs::write(root.join("embedding.gguf"), b"short").unwrap();
+    fs::write(root.join("assistant.gguf"), b"short").unwrap();
     let missing = missing(&root);
-    assert!(missing.contains(&"embedding.gguf".into()));
+    assert!(missing.contains(&"assistant.gguf".into()));
+    assert!(!missing.iter().any(|s| s.contains("embedding")));
     assert!(missing.contains(&"runtime/llama-server-impl.dll".into()));
     assert!(!missing.contains(&"runtime/llama-server.exe".into()));
     fs::remove_dir_all(root).unwrap();

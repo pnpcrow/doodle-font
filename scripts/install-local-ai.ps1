@@ -17,7 +17,6 @@ Expand-Archive -LiteralPath (Join-Path $Destination 'runtime.zip') -DestinationP
 $notices = @(
     @{Name='LICENSE-llama.cpp.txt'; Url='https://raw.githubusercontent.com/ggml-org/llama.cpp/b11531/LICENSE'},
     @{Name='LICENSE-Apache-2.0.txt'; Url='https://www.apache.org/licenses/LICENSE-2.0.txt'},
-    @{Name='EmbeddingGemma-2-model-card.md'; Url='https://huggingface.co/google/embeddinggemma-2/raw/914f7f89142e33e77833254d9c9b90c3cef7303b/README.md'},
     @{Name='Gemma-4-E2B-model-card.md'; Url='https://huggingface.co/google/gemma-4-E2B-it/raw/3e22461f65e89153144f8adb70e3b8c2cc9845a7/README.md'}
 )
 foreach($notice in $notices) {

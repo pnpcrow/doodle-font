@@ -8,18 +8,6 @@
       "bytes": 33458454
     },
     {
-      "name": "embedding.gguf",
-      "url": "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/bfcd298762cc34d0357ece5ebdd31791a3a374d8/embeddinggemma-2-Q8_0.gguf",
-      "sha256": "2188ac1deca4b77dffefd603c2776a9d76d9d74ec01841392982ebb840b09135",
-      "bytes": 309855456
-    },
-    {
-      "name": "embedding-vision.gguf",
-      "url": "https://huggingface.co/ggml-org/embeddinggemma-2-GGUF/resolve/bfcd298762cc34d0357ece5ebdd31791a3a374d8/mmproj-embeddinggemma-2-Q8_0.gguf",
-      "sha256": "c4a8a52691ecef40618438928bdf9e68379b854e24166f292592353db0aab64f",
-      "bytes": 554821024
-    },
-    {
       "name": "assistant.gguf",
       "url": "https://huggingface.co/ggml-org/gemma-4-E2B-it-GGUF/resolve/b4243c156154b6dca9324415f8c7ccc098b4aed1/gemma-4-E2B-it-Q4_0.gguf",
       "sha256": "8e30dff3ac4c8434c49a7036fa15564bdbb6044e42bf04550bf1a096ad7e6a52",

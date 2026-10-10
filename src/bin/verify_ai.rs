@@ -28,7 +28,7 @@ fn main() {
         "그림에 어떤 도형과 색이 보이는지 한국어 두 문장으로 설명해 줘."
     };
     let result=local_ai::run(json!({"glyph":project.glyphs[1],"action":action,"config":{"provider":"local"},"prompt":prompt,"references":project.templates}),Arc::new(AtomicBool::new(false)),tx).expect("live local text + image inference");
-    assert_eq!(result["embedding"].as_array().unwrap().len(), 768);
+    assert!(result["embedding"].is_null());
     assert!(
         result["answer"].as_str().is_some_and(|s| !s.is_empty()) || result["artwork"].is_object()
     );
