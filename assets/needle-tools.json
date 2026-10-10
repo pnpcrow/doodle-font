@@ -1,0 +1,17 @@
+[
+  {
+    "name": "set_stroke",
+    "description": "Change only the width of all existing strokes. 기존 그림의 획 굵기만 지정한 숫자로 통일합니다. New drawings and visual analysis use use_assistant.",
+    "parameters": {"type": "object", "properties": {"width": {"type": "number", "minimum": 1, "maximum": 300}}, "required": ["width"], "additionalProperties": false}
+  },
+  {
+    "name": "set_color",
+    "description": "Change only the color of the existing drawing to an explicitly named color. 기존 그림의 색만 변경합니다.",
+    "parameters": {"type": "object", "properties": {"color": {"type": "string", "enum": ["black", "white", "red", "blue", "green"]}}, "required": ["color"], "additionalProperties": false}
+  },
+  {
+    "name": "use_assistant",
+    "description": "Analyze the image, explain, create a new glyph, perform complex edits, or handle any ambiguous request. 그림 분석, 설명, 새 글자 생성, 복잡한 편집, 모호한 요청.",
+    "parameters": {"type": "object", "properties": {"task": {"type": "string", "enum": ["analyze", "generate", "other"]}}, "required": ["task"], "additionalProperties": false}
+  }
+]

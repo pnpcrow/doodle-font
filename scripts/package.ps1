@@ -15,6 +15,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $destination 'scripts'),(Jo
 New-Item -ItemType Directory -Force -Path (Join-Path $destination 'licenses\typefaces') | Out-Null
 Copy-Item -LiteralPath 'assets\fonts\Noto-OFL.txt','assets\fonts\SingleDay-OFL.txt','assets\fonts\manifest.json' -Destination (Join-Path $destination 'licenses\typefaces')
 Copy-Item -LiteralPath 'assets/local-ai-manifest.json' -Destination (Join-Path $destination 'assets/local-ai-manifest.json')
+Copy-Item -LiteralPath 'assets/needle-ai-manifest.json' -Destination (Join-Path $destination 'assets/needle-ai-manifest.json')
 Copy-Item -LiteralPath 'scripts\install-local-ai.ps1' -Destination (Join-Path $destination 'scripts\install-local-ai.ps1')
 $metadata = cargo metadata --locked --format-version 1 --filter-platform x86_64-pc-windows-msvc | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0) { throw 'Dependency license inventory failed' }

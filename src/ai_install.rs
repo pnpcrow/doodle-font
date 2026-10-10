@@ -32,19 +32,40 @@ pub fn manifest() -> Manifest {
     serde_json::from_str(include_str!("../assets/local-ai-manifest.json"))
         .expect("embedded model manifest")
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Package {
+    Gemma,
+    Needle,
+}
+pub fn package_manifest(package: Package) -> Manifest {
+    match package {
+        Package::Gemma => manifest(),
+        Package::Needle => serde_json::from_str(include_str!("../assets/needle-ai-manifest.json"))
+            .expect("embedded decision model manifest"),
+    }
+}
 #[derive(Clone, Debug)]
 pub struct Progress {
     pub message: String,
     pub fraction: f32,
 }
 pub fn missing(root: &Path) -> Vec<String> {
-    let mut out: Vec<_> = manifest()
+    package_missing(root, Package::Gemma)
+}
+pub fn package_missing(root: &Path, package: Package) -> Vec<String> {
+    let mut out: Vec<_> = package_manifest(package)
         .files
         .into_iter()
         .filter(|a| a.name != "runtime.zip")
         .filter(|a| fs::metadata(root.join(&a.name)).map_or(true, |m| m.len() != a.bytes))
         .map(|a| a.name)
         .collect();
+    if package == Package::Needle {
+        if !root.join("installed.json").is_file() {
+            out.push("installed.json".into());
+        }
+        return out;
+    }
     let exe = super::local_ai::executable_at(root);
     let runtime = exe.parent().unwrap_or(root);
     for name in [
@@ -307,6 +328,14 @@ fn install_runtime(root: &Path, cancel: &AtomicBool) -> Result<(), String> {
     result
 }
 pub fn install(root: PathBuf, cancel: Arc<AtomicBool>, tx: Sender<Progress>) -> Result<(), String> {
+    install_package(root, Package::Gemma, cancel, tx)
+}
+pub fn install_package(
+    root: PathBuf,
+    package: Package,
+    cancel: Arc<AtomicBool>,
+    tx: Sender<Progress>,
+) -> Result<(), String> {
     fs::create_dir_all(&root).map_err(|e| format!("설치 폴더를 만들지 못했어요: {e}"))?;
     let lock = OpenOptions::new()
         .create(true)
@@ -323,21 +352,24 @@ pub fn install(root: PathBuf, cancel: Arc<AtomicBool>, tx: Sender<Progress>) -> 
         .map_err(|e| e.to_string())?;
     runtime.block_on(async{
         let client=reqwest::Client::builder().connect_timeout(Duration::from_secs(30)).read_timeout(Duration::from_secs(60)).redirect(reqwest::redirect::Policy::limited(10)).build().map_err(|e|e.to_string())?;
-        let manifest=manifest();let total=manifest.files.iter().map(|f|f.bytes).sum();let mut done=0;
+        let manifest=package_manifest(package);let total=manifest.files.iter().map(|f|f.bytes).sum();let mut done=0;
         for asset in &manifest.files{
             let future=fetch(&client,asset,&root,&cancel,&tx,done,total);tokio::pin!(future);
             loop{tokio::select!{result=&mut future=>{result?;break;},_=tokio::time::sleep(Duration::from_millis(100))=>{check_cancel(&cancel)?;}}}
             done+=asset.bytes;
         }
-        progress(&tx,"실행기 압축 해제 중".into(),done,total);
-        install_runtime(&root,&cancel)?;check_cancel(&cancel)?;
+        if package == Package::Gemma {
+            progress(&tx,"실행기 압축 해제 중".into(),done,total);
+            install_runtime(&root,&cancel)?;
+            fs::write(root.join("LICENSE-llama.cpp.txt"),include_str!("../assets/ai-notices/LICENSE-llama.cpp.txt")).map_err(|e|e.to_string())?;
+        }
+        check_cancel(&cancel)?;
         // License texts are compiled into the app, so repair also works offline.
-        fs::write(root.join("LICENSE-llama.cpp.txt"),include_str!("../assets/ai-notices/LICENSE-llama.cpp.txt")).map_err(|e|e.to_string())?;
         fs::write(root.join("LICENSE-Apache-2.0.txt"),include_str!("../assets/ai-notices/LICENSE-Apache-2.0.txt")).map_err(|e|e.to_string())?;
         let pending=root.join("installed.json.pending");
         fs::write(&pending,serde_json::to_vec_pretty(&manifest).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         fs::rename(pending,root.join("installed.json")).map_err(|e|e.to_string())?;
-        let missing=missing(&root);if !missing.is_empty(){return Err(format!("설치 후 확인이 필요해요: {}",missing.join(", ")));}
-        progress(&tx,"설치 완료 · 로컬 AI를 사용할 수 있어요".into(),total,total);Ok(())
+        let missing=package_missing(&root,package);if !missing.is_empty(){return Err(format!("설치 후 확인이 필요해요: {}",missing.join(", ")));}
+        progress(&tx,"설치 완료 · AI를 사용할 수 있어요".into(),total,total);Ok(())
     })
 }

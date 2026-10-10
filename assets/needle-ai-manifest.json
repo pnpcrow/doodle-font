@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "name": "needle.exe",
+      "url": "https://huggingface.co/Cactus-Compute/needle3/resolve/2ae11323dc000f5e70c49f7403efa6af12ba9e67/windows-x86_64/needle.exe",
+      "sha256": "e8863ca0c06a47d406777077f1ba728b58e57d77fedff252dbe6827d588acc8c",
+      "bytes": 1563136
+    },
+    {
+      "name": "needle3.cact",
+      "url": "https://huggingface.co/Cactus-Compute/needle3/resolve/2ae11323dc000f5e70c49f7403efa6af12ba9e67/needle3.cact",
+      "sha256": "c9d915eca282ed42d1a09b143b592adb4cc6744ffe2d294adf5cfc5548170c38",
+      "bytes": 35335380
+    }
+  ]
+}

@@ -16,7 +16,7 @@ type JobResult = Result<Job, String>;
 enum Job {
     Export(font::ExportResult, Option<PathBuf>),
     AiReply(String, bool, serde_json::Value),
-    LocalAiInstalled,
+    AiInstalled(doodle_core::ai_install::Package),
     FontPreview(Vec<u8>, String),
     Imported(Project),
 }
@@ -84,6 +84,8 @@ pub struct Studio {
     ai_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     ai_progress: Option<mpsc::Receiver<String>>,
     local_installed: bool,
+    decision_mode: doodle_core::needle::Mode,
+    needle_installed: bool,
     close_after_ai: bool,
     installing_ai: bool,
     install_error: String,
@@ -109,6 +111,8 @@ pub struct Studio {
     qa_candidate_accept: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_ai_send: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_decision_button: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -228,6 +232,9 @@ impl Studio {
             ai_cancel: None,
             ai_progress: None,
             local_installed: doodle_core::local_ai::installed(),
+            decision_mode: doodle_core::needle::Options::load(&root.join("ai-options.json"))
+                .decision,
+            needle_installed: doodle_core::needle::installed(),
             close_after_ai: false,
             installing_ai: false,
             install_error: String::new(),
@@ -253,6 +260,8 @@ impl Studio {
             qa_candidate_accept: None,
             #[cfg(feature = "ui-qa")]
             qa_ai_send: None,
+            #[cfg(feature = "ui-qa")]
+            qa_decision_button: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -426,6 +435,7 @@ impl Studio {
                     self.install_progress = None;
                     if was_installing {
                         self.local_installed = doodle_core::local_ai::installed();
+                        self.needle_installed = doodle_core::needle::installed();
                     }
                     let was_ai = self.ai_cancel.is_some() && !was_installing;
                     let cancelled = self
@@ -455,12 +465,13 @@ impl Studio {
                             }
                             self.notify(e)
                         }
-                        Ok(Job::LocalAiInstalled) => {
+                        Ok(Job::AiInstalled(package)) => {
                             self.local_installed = doodle_core::local_ai::installed();
+                            self.needle_installed = doodle_core::needle::installed();
                             self.install_error.clear();
-                            self.notify(
-                                "로컬 AI 설치를 마쳤어요. 하단 입력창에서 바로 사용할 수 있어요.",
-                            );
+                            self.notify(if package == doodle_core::ai_install::Package::Needle {
+                                "판단 AI 설치를 마쳤어요. 모든 AI 연결의 입력 앞단에서 사용할 수 있어요."
+                            } else { "Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요." });
                         }
                         Ok(Job::AiReply(id, drawing, result)) => {
                             match self.receive_ai_reply(&id, drawing, result) {
@@ -2145,9 +2156,8 @@ impl Studio {
                 .ok_or("AI 상담 응답이 비어 있어요.")?
                 .to_owned();
         }
-        if let Some(matches) = result["matches"].as_str().filter(|s| !s.is_empty()) {
-            self.ai_answer
-                .push_str(&format!("\n\n참고 그림 비교: {matches}"));
+        if let Some(note) = result["decisionNote"].as_str().filter(|s| !s.is_empty()) {
+            self.ai_answer.push_str(&format!("\n\n{note}"));
         }
         Ok(())
     }
@@ -2190,6 +2200,9 @@ impl Studio {
                 }
                 "ai-candidate-live" | "ai-typography-live" => {
                     ui.label("실제 내장 AI 생성 결과 · 글자 정확도는 별도로 확인합니다.");
+                }
+                "decision-fast-live" | "decision-gemma-live" => {
+                    ui.label("실제 Needle 3 판단 경로 · 모의 응답을 사용하지 않습니다.");
                 }
                 _ => {}
             }
@@ -2287,6 +2300,9 @@ impl Studio {
         }
     }
     fn install_ai(&mut self, ctx: &egui::Context) {
+        self.install_package(ctx, doodle_core::ai_install::Package::Gemma);
+    }
+    fn install_package(&mut self, ctx: &egui::Context, package: doodle_core::ai_install::Package) {
         if self.job.is_some() {
             return;
         }
@@ -2294,7 +2310,12 @@ impl Studio {
         self.installing_ai = true;
         self.install_fraction = 0.;
         self.ai_started = Instant::now();
-        self.ai_status = "로컬 AI 설치 준비 중".into();
+        self.ai_status = if package == doodle_core::ai_install::Package::Needle {
+            "판단 AI 설치 준비 중"
+        } else {
+            "Gemma 4 설치 준비 중"
+        }
+        .into();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.ai_cancel = Some(cancel.clone());
         self.draft = None;
@@ -2306,9 +2327,14 @@ impl Studio {
         });
         let (tx, rx) = mpsc::channel();
         self.install_progress = Some(rx);
-        let root = doodle_core::local_ai::root();
+        let root = if package == doodle_core::ai_install::Package::Needle {
+            doodle_core::needle::root()
+        } else {
+            doodle_core::local_ai::root()
+        };
         self.spawn(ctx, move || {
-            doodle_core::ai_install::install(root, cancel, tx).map(|()| Job::LocalAiInstalled)
+            doodle_core::ai_install::install_package(root, package, cancel, tx)
+                .map(|()| Job::AiInstalled(package))
         });
     }
     fn ai_ready(&self) -> bool {
@@ -2339,7 +2365,7 @@ impl Studio {
             return;
         }
         let id = g.id.clone();
-        let payload = serde_json::json!({"glyph":g,"action":if drawing{"generate"}else{"assist"},"config":{"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key},"prompt":self.ai_prompt,"sendReference":self.send_reference || self.api_provider=="local","colorMode":if self.ai_color{"color"}else{"mono"},"references":self.project.templates.iter().filter(|t|t.permissions.ai && t.permissions.display && t.original.is_some()).take(8).collect::<Vec<_>>()});
+        let payload = serde_json::json!({"glyph":g,"action":if drawing{"generate"}else{"assist"},"decision":self.decision_mode,"config":{"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key},"prompt":self.ai_prompt,"sendReference":self.send_reference || self.api_provider=="local","colorMode":if self.ai_color{"color"}else{"mono"}});
         if let Err(e) = doodle_core::ai::validate_target(&payload, drawing) {
             self.notify(e);
             return;
@@ -2361,7 +2387,7 @@ impl Studio {
             }
         });
         self.spawn(ctx, move || {
-            doodle_core::local_ai::run(payload, cancel, tx).map(|r| Job::AiReply(id, drawing, r))
+            doodle_core::ai_pipeline::run(payload, cancel, tx).map(|r| Job::AiReply(id, drawing, r))
         });
     }
     fn ai_dock(&mut self, ctx: &egui::Context) {
@@ -2491,6 +2517,42 @@ impl Studio {
             });
         }
     }
+    fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
+        use doodle_core::needle::Mode;
+        let previous = self.decision_mode;
+        egui::Frame::new().fill(Color32::from_rgb(238,239,232)).corner_radius(12).inner_margin(18).show(ui, |ui| {
+            ui.set_max_width(760.);
+            ui.label(RichText::new("입력 판단 AI · 공통 옵션").size(19.).strong());
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.decision_mode, Mode::Off, "사용 안 함");
+                let response = ui.selectable_value(&mut self.decision_mode, Mode::Needle, "Needle 3 · 시험 기능");
+                #[cfg(feature = "ui-qa")] { self.qa_decision_button = Some(response.rect); }
+                let _ = response;
+            });
+            ui.label("입력 → 판단 → 실행 전 확인 → 아래에서 선택한 내장 AI 또는 API");
+            if self.decision_mode == Mode::Needle {
+                ui.label("간단한 편집은 후보로 만들고, 불확실한 요청은 선택한 AI로 넘겨요. 한국어 판단 정확도는 제한적입니다.");
+                ui.horizontal(|ui| {
+                    chip(ui, if self.needle_installed { "판단 모델 설치 완료" } else { "판단 모델 설치 필요 · 약 37 MB" });
+                    if ui.add_enabled(self.job.is_none(), egui::Button::new(if self.needle_installed { "판단 모델 검증 · 복구" } else { "판단 모델 설치" })).clicked() {
+                        self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
+                    }
+                });
+                ui.label(RichText::new("판단은 PC에서 텍스트만 읽어요. 설치되지 않았거나 실패하면 선택한 AI로 바로 넘깁니다.").size(12.).color(MUTED));
+                if !self.install_error.is_empty() { ui.colored_label(ACCENT, &self.install_error); }
+            }
+        });
+        if previous != self.decision_mode {
+            let path = self.save_path.with_file_name("ai-options.json");
+            if let Err(e) = (doodle_core::needle::Options {
+                decision: self.decision_mode,
+            })
+            .save(&path)
+            {
+                self.notify(format!("판단 AI 설정을 저장하지 못했어요: {e}"));
+            }
+        }
+    }
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         ui.add_space(12.);
         ui.label(
@@ -2503,13 +2565,15 @@ impl Studio {
                 .color(MUTED),
         );
         ui.add_space(24.);
+        self.decision_options_ui(ui);
+        ui.add_space(16.);
+        ui.label(RichText::new("그림 분석·생성 AI").size(20.).strong());
         egui::Frame::new().fill(Color32::from_rgb(255,254,250)).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{ui.selectable_value(&mut self.api_provider,"local".into(),"내장 로컬 AI");if ui.selectable_value(&mut self.api_provider,"openai".into(),"OpenAI 호환").clicked(){self.api_endpoint="https://api.openai.com/v1".into();}
             if ui.selectable_value(&mut self.api_provider,"anthropic".into(),"Anthropic 호환").clicked(){self.api_endpoint="https://api.anthropic.com/v1".into();}});ui.add_space(16.);
             if self.api_provider=="local" {
-                ui.label("EmbeddingGemma 2 · 텍스트/이미지 비교");
                 ui.label("Gemma 4 E2B · 그림 상담과 후보 생성");
                 chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"로컬 AI 설치가 필요해요"});
-                ui.label("최초 다운로드 약 4.3 GB · 설치 중에는 편집이 잠깁니다.");
+                ui.label("최초 다운로드 약 3.4 GB · 설치 중에는 편집이 잠깁니다.");
                 ui.label(RichText::new(format!("설치 위치: {}",doodle_core::local_ai::root().display())).size(12.).color(MUTED));
                 if !self.local_installed {let missing=doodle_core::ai_install::missing(&doodle_core::local_ai::root());ui.label(RichText::new(format!("확인이 필요한 파일: {}",missing.join(", "))).size(12.).color(MUTED));}
                 ui.horizontal(|ui|{
@@ -2519,7 +2583,7 @@ impl Studio {
                     if ui.button("설치 상태 다시 확인").clicked(){self.local_installed=doodle_core::local_ai::installed();self.last_install_check=Instant::now();}
                 });
                 if !self.install_error.is_empty(){ui.colored_label(ACCENT,&self.install_error);}
-                chip(ui,"필요할 때 모델을 순서대로 읽고 작업이 끝나면 메모리를 반환합니다.");
+                chip(ui,"필요할 때 Gemma 4를 읽고 작업이 끝나면 메모리를 반환합니다.");
             } else {
             egui::Grid::new("api-info").num_columns(2).spacing([20.,16.]).show(ui,|ui|{ui.label("API 기본 주소");ui.add(egui::TextEdit::singleline(&mut self.api_endpoint).desired_width(460.));ui.end_row();ui.label("모델 이름");ui.add(egui::TextEdit::singleline(&mut self.api_model).hint_text("연결할 제공자의 정확한 모델 ID"));ui.end_row();ui.label("API 키");ui.add(egui::TextEdit::singleline(&mut self.api_key).password(true).hint_text("앱을 닫으면 지워져요"));ui.end_row();});ui.add_space(12.);chip(ui,"키는 메모리에만 보관합니다. 프로젝트·로그·자동 저장에 포함하지 않아요.");}
             ui.add_space(20.);ui.label("원하는 그림 스타일");ui.add(egui::TextEdit::multiline(&mut self.ai_prompt).desired_width(680.).desired_rows(3));ui.checkbox(&mut self.ai_color,"컬러 그림 제안");ui.checkbox(&mut self.send_reference,"현재 드로잉 영역의 PNG 이미지와 벡터를 API에 전송");chip(ui,"로컬 AI는 그림을 PC에서 읽습니다. API에서는 체크한 경우에만 그림을 전송합니다.");ui.add_space(18.);if ui.add_enabled(self.job.is_none(),egui::Button::new("선택한 글리프의 후보 생성").fill(Color32::from_rgb(245,220,200))).clicked(){self.generate_ai(ui.ctx());}ui.add_space(8.);ui.label(RichText::new("후보는 검토 후 직접 채택합니다. 잠금·의도적 빈칸·제어 문자는 보호됩니다.").size(12.).color(MUTED));
@@ -2800,13 +2864,18 @@ impl eframe::App for Studio {
             "ai-typography-live",
             "ai-candidate-accept",
             "ai-typography",
+            "decision-settings",
+            "decision-fast-live",
+            "decision-gemma-live",
         ]
         .contains(&qa_view.as_str())
         {
             input
                 .events
                 .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
-            let (rect, press_frame) = if qa_view.ends_with("-live") {
+            let (rect, press_frame) = if qa_view == "decision-settings" {
+                (self.qa_decision_button, 3)
+            } else if qa_view.ends_with("-live") {
                 (self.qa_ai_send, 3)
             } else {
                 (self.qa_candidate_accept, 5)
@@ -2942,6 +3011,28 @@ impl eframe::App for Studio {
                         }
                     }
                     "ai-candidate-existing" => self.open_candidate_review(),
+                    "decision-settings" => {
+                        self.tab = 3;
+                        self.api_provider = "anthropic".into();
+                        self.api_endpoint = "https://api.anthropic.com/v1".into();
+                        self.decision_mode = doodle_core::needle::Mode::Off;
+                    }
+                    "decision-fast-live" | "decision-gemma-live" => {
+                        self.tab = 3;
+                        self.decision_mode = doodle_core::needle::Mode::Needle;
+                        self.ai_action = true;
+                        assert!(self.needle_installed);
+                        if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("decision-fast-live") {
+                            self.api_provider = "openai".into();
+                            self.api_endpoint = "http://127.0.0.1:1/v1".into();
+                            self.api_model = "unreachable".into();
+                            self.api_key = "qa-only".into();
+                            self.ai_prompt = "Set the stroke width to 70.".into();
+                        } else {
+                            assert!(self.local_installed);
+                            self.ai_prompt = "A를 굵고 둥근 고딕체로 그려줘.".into();
+                        }
+                    }
                     "ai-typography" => {
                         self.local_installed = true;
                         let g = &self.project.glyphs[0];
@@ -2989,6 +3080,19 @@ impl eframe::App for Studio {
                 }
             }
             ctx.request_repaint();
+            if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("decision-settings")
+                && ctx.cumulative_frame_nr() == 10
+            {
+                assert_eq!(self.decision_mode, doodle_core::needle::Mode::Needle);
+                assert_eq!(
+                    doodle_core::needle::Options::load(
+                        &self.save_path.with_file_name("ai-options.json")
+                    )
+                    .decision,
+                    self.decision_mode
+                );
+                assert_eq!(self.api_provider, "anthropic");
+            }
             if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-typography")
                 && ctx.cumulative_frame_nr() == 10
             {
@@ -3116,8 +3220,13 @@ impl eframe::App for Studio {
                 self.notify("UI 자동 검증 통과: 그리기 · 실행 취소 · 다시 실행 · 원본 보존 · 저장");
             }
             let install_flow = std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("install-flow");
-            let candidate_live = ["ai-candidate-live", "ai-typography-live"]
-                .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str());
+            let candidate_live = [
+                "ai-candidate-live",
+                "ai-typography-live",
+                "decision-fast-live",
+                "decision-gemma-live",
+            ]
+            .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str());
             if candidate_live && self.ai_started.elapsed() > Duration::from_secs(420) {
                 panic!("Local candidate UI timed out: {}", self.ai_status);
             }
@@ -3128,6 +3237,20 @@ impl eframe::App for Studio {
                     self.ai_answer
                 );
                 assert_eq!(self.project.glyphs[self.selected].candidates.len(), 1);
+                if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("decision-fast-live") {
+                    assert!(self.ai_answer.contains("호출하지"));
+                    assert_eq!(
+                        self.project.glyphs[0].candidates[0].artwork.shapes[0].stroke,
+                        70.
+                    );
+                }
+                if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("decision-gemma-live") {
+                    assert!(self.ai_answer.contains("넘겼어요"));
+                    assert_eq!(
+                        self.project.glyphs[0].candidates[0].artwork.shapes[0].kind,
+                        "outline"
+                    );
+                }
                 if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-typography-live") {
                     let candidate = &self.project.glyphs[self.selected].candidates[0];
                     assert_eq!(candidate.artwork.shapes[0].kind, "outline");
@@ -3180,6 +3303,7 @@ impl eframe::App for Studio {
         self.poll();
         if self.job.is_none() && self.last_install_check.elapsed() > Duration::from_secs(2) {
             self.local_installed = doodle_core::local_ai::installed();
+            self.needle_installed = doodle_core::needle::installed();
             self.last_install_check = Instant::now();
         }
         if self.close_after_ai && self.job.is_none() {

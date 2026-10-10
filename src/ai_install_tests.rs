@@ -166,3 +166,25 @@ fn missing_report_checks_runtime_dependencies_and_model_sizes() {
     assert!(!missing.contains(&"runtime/llama-server.exe".into()));
     fs::remove_dir_all(root).unwrap();
 }
+#[test]
+fn decision_install_is_independent_of_gemma_and_legacy_embeddings() {
+    let root = folder();
+    let package = package_manifest(Package::Needle);
+    for asset in &package.files {
+        let file = File::create(root.join(&asset.name)).unwrap();
+        file.set_len(asset.bytes).unwrap();
+    }
+    assert_eq!(
+        package_missing(&root, Package::Needle),
+        vec!["installed.json"]
+    );
+    fs::write(root.join("installed.json"), b"{}").unwrap();
+    assert!(package_missing(&root, Package::Needle).is_empty());
+    assert!(!missing(&root).is_empty());
+    assert_eq!(manifest().files.len(), 3);
+    assert!(!manifest()
+        .files
+        .iter()
+        .any(|a| a.name.contains("embedding")));
+    fs::remove_dir_all(root).unwrap();
+}
