@@ -2560,7 +2560,14 @@ impl Studio {
         let gap = 14.;
         let card_width = (view.width() - companion_size - gap - 80.).min(700.);
         let card_outer_width = card_width + frame.total_margin().sum().x;
-        let companion_offset = Vec2::new(-(card_outer_width + gap) / 2., -44.);
+        let card_center_x = view
+            .center()
+            .x
+            .min(view.right() - 16. - companion_size - gap - card_outer_width / 2.);
+        let companion_offset = Vec2::new(
+            card_center_x - view.center().x + card_outer_width / 2. + gap + companion_size / 2.,
+            -44.,
+        );
         let companion_rect = Rect::from_min_size(
             Pos2::new(
                 view.center().x + companion_offset.x - companion_size / 2.,
@@ -2569,7 +2576,10 @@ impl Studio {
             Vec2::splat(companion_size),
         );
         let area = egui::Area::new("ai-dock".into())
-            .anchor(Align2::CENTER_BOTTOM, [(companion_size + gap) / 2., -44.])
+            .anchor(
+                Align2::CENTER_BOTTOM,
+                [card_center_x - view.center().x, -44.],
+            )
             .order(egui::Order::Foreground);
         if let Some(cancel) = self.ai_cancel.clone() {
             let dock = egui::Modal::new("ai-busy".into())
@@ -4320,7 +4330,7 @@ impl eframe::App for Studio {
             if let (Some(companion), Some(dock)) = (self.qa_dock.companion, self.qa_dock.dock) {
                 assert!(companion.width() >= 159. && companion.height() >= 159.);
                 assert!(
-                    companion.right() + 8. <= dock.left(),
+                    dock.right() + 8. <= companion.left(),
                     "companion must be beside the prompt"
                 );
                 assert!(ctx.content_rect().contains_rect(companion));
