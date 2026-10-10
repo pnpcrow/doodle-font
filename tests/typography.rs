@@ -170,10 +170,14 @@ fn outline_counters_survive_raster_export_and_license_provenance() {
     p.glyphs.push(g);
     let copy: Project = serde_json::from_slice(&serde_json::to_vec(&p).unwrap()).unwrap();
     copy.validate().unwrap();
-    for mode in ["mono", "color", "bitmap"] {
+    for (format, mode) in ["ttf", "otf"]
+        .into_iter()
+        .flat_map(|format| ["mono", "color", "bitmap"].map(|mode| (format, mode)))
+    {
         let result = font::export(
             &copy,
             &font::ExportOptions {
+                format: Some(format.into()),
                 mode: Some(mode.into()),
                 ..Default::default()
             },

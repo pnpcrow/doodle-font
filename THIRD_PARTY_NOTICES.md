@@ -13,6 +13,8 @@ Doodle Font uses Rust crates from crates.io, pinned in `Cargo.lock`. Notable com
 - unicode-segmentation: MIT OR Apache-2.0
 - rfd: MIT
 - zip: MIT
+- flate2 (WOFF compression): MIT OR Apache-2.0
+- brotli (WOFF2 compression): BSD-3-Clause AND MIT
 - uuid: Apache-2.0 OR MIT
 
 The built-in three doodle templates and the application icon were created for this application and are offered as CC0-1.0 artwork. No Apple, Samsung, Noto, or OpenMoji emoji images are bundled. Windows fonts are read from the user's system and are not redistributed.

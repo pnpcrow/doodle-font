@@ -3,8 +3,10 @@ use crate::model::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
+mod formats;
 #[derive(Default, Deserialize)]
 pub struct ExportOptions {
+    pub format: Option<String>,
     pub mode: Option<String>,
     pub locale: Option<String>,
     pub group: Option<String>,
@@ -21,6 +23,7 @@ pub struct ExportResult {
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     pub family: String,
+    pub format: String,
     pub glyph_count: usize,
     pub authored_count: usize,
     pub tables: Vec<String>,
@@ -192,7 +195,7 @@ struct Outline {
     points: u16,
     contours: u16,
 }
-fn outline(shapes: &[&Shape]) -> Result<Outline, String> {
+fn outline(shapes: &[&Shape], cff_width: Option<u16>) -> Result<Outline, String> {
     let mut contours = Vec::new();
     for s in shapes {
         for mut pts in polygons(s)? {
@@ -218,7 +221,11 @@ fn outline(shapes: &[&Shape]) -> Result<Outline, String> {
     )?;
     if count == 0 {
         return Ok(Outline {
-            data: vec![],
+            data: if let Some(width) = cff_width {
+                formats::charstring(&[], &[], width)?
+            } else {
+                vec![]
+            },
             bounds: [0; 4],
             points: 0,
             contours: 0,
@@ -235,6 +242,20 @@ fn outline(shapes: &[&Shape]) -> Result<Outline, String> {
         pts.iter().map(|p| p[0]).max().unwrap(),
         pts.iter().map(|p| p[1]).max().unwrap(),
     ];
+    if let Some(width) = cff_width {
+        let lengths: Vec<usize> = contours.iter().map(Vec::len).collect();
+        let data = formats::charstring(&pts, &lengths, width)?;
+        check(
+            data.len() <= 65535,
+            "OTF 윤곽선이 너무 복잡해요. 레이어를 단순화하거나 TTF·WOFF 형식을 선택해 주세요.",
+        )?;
+        return Ok(Outline {
+            data,
+            bounds,
+            points: count as u16,
+            contours: contours.len() as u16,
+        });
+    }
     let mut b = B::default();
     b.i16(contours.len() as i16);
     for v in bounds {
@@ -579,11 +600,11 @@ fn checksum(bytes: &[u8]) -> u32 {
         sum.wrapping_add(u32::from_be_bytes(v))
     })
 }
-fn sfnt(tables: BTreeMap<&str, B>) -> Vec<u8> {
+fn sfnt(tables: BTreeMap<&str, B>, cff: bool) -> Vec<u8> {
     let n = tables.len() as u16;
     let power = 1u16 << n.ilog2();
     let mut b = B::default();
-    b.u32(0x00010000);
+    b.u32(if cff { 0x4f54544f } else { 0x00010000 });
     b.u16(n);
     b.u16(power * 16);
     b.u16(n.ilog2() as u16);
@@ -616,6 +637,16 @@ pub fn compile(
     mode: &str,
     suffix: &str,
 ) -> Result<(Vec<u8>, Report), String> {
+    compile_format(p, selected, mode, suffix, "ttf")
+}
+fn compile_format(
+    p: &Project,
+    selected: &[&Glyph],
+    mode: &str,
+    suffix: &str,
+    format: &str,
+) -> Result<(Vec<u8>, Report), String> {
+    let cff = format == "otf";
     check(
         ["mono", "color", "bitmap"].contains(&mode),
         "출력 형식을 확인해 주세요.",
@@ -630,7 +661,7 @@ pub fn compile(
         warnings.push("sbix 비트맵 출력: 글리프 그림은 1000 × 1000 작업 영역으로 잘립니다. 외부 앱의 컬러 폰트 지원을 확인하세요.".into())
     }
     let mode = if bitmap { "bitmap" } else { mode };
-    let mut outlines = vec![outline(&[])?];
+    let mut outlines = vec![outline(&[], cff.then_some(1000))?];
     let mut advances = vec![1000u16];
     let mut map = BTreeMap::new();
     let mut texts: BTreeMap<&str, Vec<(&Glyph, u16)>> = BTreeMap::new();
@@ -646,7 +677,10 @@ pub fn compile(
         )?;
         let gid = gid as u16;
         let ss = shapes(g);
-        outlines.push(outline(&ss)?);
+        outlines.push(outline(
+            &ss,
+            cff.then_some(g.artwork.advance.round() as u16),
+        )?);
         advances.push(g.artwork.advance.round() as u16);
         texts.entry(&g.text).or_default().push((g, gid));
         if mode == "color" && !ss.is_empty() {
@@ -662,7 +696,10 @@ pub fn compile(
                     colors.len() - 1
                 });
                 layers.push((outlines.len() as u16, idx as u16));
-                outlines.push(outline(&[s])?);
+                outlines.push(outline(
+                    &[s],
+                    cff.then_some(g.artwork.advance.round() as u16),
+                )?);
                 advances.push(g.artwork.advance.round() as u16);
             }
         }
@@ -695,7 +732,7 @@ pub fn compile(
                     "입력 부품까지 포함하면 65,535개를 넘어요.",
                 )?;
                 e.insert(outlines.len() as u16);
-                outlines.push(outline(&[])?);
+                outlines.push(outline(&[], cff.then_some(0))?);
                 advances.push(0);
                 if cp != 0x200d && !(0xfe00..=0xfe0f).contains(&cp) {
                     missing.push(format!("U+{cp:04X}"));
@@ -736,14 +773,18 @@ pub fn compile(
     let mut loca = B::default();
     let mut hmtx = B::default();
     for (o, a) in outlines.iter().zip(&advances) {
-        loca.u32(glyf.0.len() as u32);
-        glyf.bytes(&o.data);
+        if !cff {
+            loca.u32(glyf.0.len() as u32);
+            glyf.bytes(&o.data);
+        }
         hmtx.u16(*a);
         hmtx.i16(o.bounds[0]);
     }
-    loca.u32(glyf.0.len() as u32);
-    tables.insert("glyf", glyf);
-    tables.insert("loca", loca);
+    if !cff {
+        loca.u32(glyf.0.len() as u32);
+        tables.insert("glyf", glyf);
+        tables.insert("loca", loca);
+    }
     tables.insert("hmtx", hmtx);
     let xmin = outlines.iter().map(|o| o.bounds[0]).min().unwrap();
     let ymin = outlines.iter().map(|o| o.bounds[1]).min().unwrap();
@@ -754,7 +795,13 @@ pub fn compile(
     head.u32(0x10000);
     head.u32(0);
     head.u32(0x5f0f3cf5);
-    head.u16(3);
+    head.u16(if cff {
+        1
+    } else if format == "woff2" {
+        3 | (1 << 11)
+    } else {
+        3
+    });
     head.u16(1000);
     let timestamp = p.updated_at.parse::<u64>().unwrap_or(0) + 2_082_844_800;
     head.bytes(&timestamp.to_be_bytes());
@@ -765,7 +812,7 @@ pub fn compile(
     head.u16(0);
     head.u16(8);
     head.i16(2);
-    head.i16(1);
+    head.i16(if cff { 0 } else { 1 });
     head.i16(0);
     tables.insert("head", head);
     let mut hhea = B::default();
@@ -792,14 +839,16 @@ pub fn compile(
     hhea.u16(n as u16);
     tables.insert("hhea", hhea);
     let mut maxp = B::default();
-    maxp.u32(0x10000);
+    maxp.u32(if cff { 0x5000 } else { 0x10000 });
     maxp.u16(n as u16);
-    maxp.u16(outlines.iter().map(|o| o.points).max().unwrap());
-    maxp.u16(outlines.iter().map(|o| o.contours).max().unwrap());
-    maxp.u16(0);
-    maxp.u16(0);
-    maxp.u16(2);
-    maxp.zeros(16);
+    if !cff {
+        maxp.u16(outlines.iter().map(|o| o.points).max().unwrap());
+        maxp.u16(outlines.iter().map(|o| o.contours).max().unwrap());
+        maxp.u16(0);
+        maxp.u16(0);
+        maxp.u16(2);
+        maxp.zeros(16);
+    }
     tables.insert("maxp", maxp);
     let mut os = B::default();
     os.u16(4);
@@ -839,6 +888,16 @@ pub fn compile(
     } else {
         ps
     };
+    if cff {
+        tables.insert(
+            "CFF ",
+            formats::cff(
+                &format!("{ps}-Regular"),
+                &outlines,
+                [xmin, ymin, xmax, ymax],
+            )?,
+        );
+    }
     let attribution = selected
         .iter()
         .flat_map(|g| {
@@ -951,12 +1010,18 @@ pub fn compile(
         tables.insert("sbix", sbix);
     }
     let tags = tables.keys().map(|s| s.to_string()).collect();
-    let bytes = sfnt(tables);
+    let bytes = sfnt(tables, cff);
     ttf_parser::Face::parse(&bytes, 0).map_err(|e| format!("출력 폰트 검증 실패: {e:?}"))?;
+    let bytes = match format {
+        "woff" => formats::woff(&bytes)?,
+        "woff2" => formats::woff2(&bytes)?,
+        _ => bytes,
+    };
     Ok((
         bytes,
         Report {
             family,
+            format: format.into(),
             glyph_count: n,
             authored_count: selected.len(),
             tables: tags,
@@ -970,6 +1035,11 @@ pub fn compile(
 pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, String> {
     use std::io::Write;
     p.validate()?;
+    let format = options.format.as_deref().unwrap_or("ttf");
+    check(
+        ["ttf", "otf", "woff", "woff2"].contains(&format),
+        "지원하지 않는 폰트 파일 포맷이에요.",
+    )?;
     let locale = options.locale.as_deref().unwrap_or("combined");
     let group = options.group.as_deref().unwrap_or("all");
     let ids: Option<HashSet<&str>> = options
@@ -1024,7 +1094,13 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
         } else {
             format!("-{group}")
         };
-        let (bytes, report) = compile(p, &gs, options.mode.as_deref().unwrap_or("color"), &suffix)?;
+        let (bytes, report) = compile_format(
+            p,
+            &gs,
+            options.mode.as_deref().unwrap_or("color"),
+            &suffix,
+            format,
+        )?;
         let safe: String = p
             .family
             .chars()
@@ -1036,7 +1112,7 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
                 }
             })
             .collect();
-        files.push((format!("{safe}{suffix}.ttf"), bytes));
+        files.push((format!("{safe}{suffix}.{format}"), bytes));
         reports.push(report);
     }
     let (filename, bytes) = if files.len() == 1 && options.split != Some(true) {

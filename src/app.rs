@@ -69,6 +69,7 @@ pub struct Studio {
     add_custom: bool,
     pua: String,
     export_open: bool,
+    export_format: String,
     export_mode: String,
     export_locale: String,
     export_group: bool,
@@ -137,6 +138,10 @@ pub struct Studio {
     qa_forget_key: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_dock: DockQa,
+    #[cfg(feature = "ui-qa")]
+    qa_export_formats: HashMap<String, Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_export_check: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -237,6 +242,7 @@ impl Studio {
             add_custom: false,
             pua: "E000".into(),
             export_open: false,
+            export_format: "ttf".into(),
             export_mode: "color".into(),
             export_locale: "combined".into(),
             export_group: false,
@@ -306,6 +312,10 @@ impl Studio {
             qa_forget_key: None,
             #[cfg(feature = "ui-qa")]
             qa_dock: Default::default(),
+            #[cfg(feature = "ui-qa")]
+            qa_export_formats: HashMap::new(),
+            #[cfg(feature = "ui-qa")]
+            qa_export_check: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -543,8 +553,9 @@ impl Studio {
                                 .iter()
                                 .map(|r| {
                                     format!(
-                                        "{} · {}개 글리프 · {}\n{}\n{}",
+                                        "{} · {} · {}개 글리프 · {}\n{}\n{}",
                                         r.family,
+                                        r.format.to_uppercase(),
                                         r.glyph_count,
                                         r.mode,
                                         r.tables.join(" / "),
@@ -2438,6 +2449,9 @@ impl Studio {
         });
     }
     fn ai_dock(&mut self, ctx: &egui::Context) {
+        if self.export_open && self.ai_cancel.is_none() {
+            return;
+        }
         if !self.ai_ready() && self.ai_cancel.is_none() {
             return;
         }
@@ -2987,15 +3001,102 @@ impl Studio {
         }
         if self.export_open {
             let mut open = true;
-            egui::Window::new("나의 폰트 내보내기").open(&mut open).default_width(570.).resizable(true).show(ctx,|ui|{
-            ui.label(RichText::new("그린 글자를, 진짜 폰트로.").size(23.).strong());ui.add_space(12.);ui.label("폰트 패밀리 이름");if ui.text_edit_singleline(&mut self.project.family).changed(){self.changed();}
-            egui::ComboBox::from_id_salt("export-mode").selected_text(match self.export_mode.as_str(){"mono"=>"단색 TTF · 이미지 실루엣 변환","bitmap"=>"비트맵 TTF · sbix",_=>"컬러 TTF · COLR/CPAL"}).show_ui(ui,|ui|{ui.selectable_value(&mut self.export_mode,"color".into(),"컬러 TTF · COLR/CPAL");ui.selectable_value(&mut self.export_mode,"mono".into(),"단색 TTF · 이미지 실루엣 변환");ui.selectable_value(&mut self.export_mode,"bitmap".into(),"비트맵 TTF · sbix");});
-            egui::ComboBox::from_id_salt("export-locale").selected_text(match self.export_locale.as_str(){"ko"=>"한국어용","ja"=>"일본어용","default"=>"공통 자형만",_=>"통합 · 지역별 locl"}).show_ui(ui,|ui|{for(v,l)in [("combined","통합 · 지역별 locl"),("ko","한국어용"),("ja","일본어용"),("default","공통 자형만")]{ui.selectable_value(&mut self.export_locale,v.into(),l);}});
-            ui.checkbox(&mut self.export_subset,"이 문장에 필요한 글리프만 출력");if self.export_subset{ui.text_edit_multiline(&mut self.export_text);}ui.checkbox(&mut self.export_group,"현재 문자 모음만 출력");ui.checkbox(&mut self.export_split,"문자 모음별 분할 · ZIP");ui.add_space(12.);
-            let count=self.project.glyphs.iter().filter(|g|g.status=="edited"||g.status=="blank").count();ui.label(format!("프로젝트 작성 항목 {count}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다."));chip(ui,"시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요.");chip(ui,"컬러 모드에 이미지가 있으면 전체를 sbix로 출력합니다. 단색 모드는 이미지를 64px 실루엣으로 변환해요.");chip(ui,"공백의 줄바꿈 성격과 제어 문자 동작은 바뀌지 않습니다.");ui.add_space(12.);
-            ui.horizontal(|ui|{for(save,label)in [(false,"출력 전 검사"),(true,"파일로 저장")]{if ui.add_enabled(self.job.is_none(),egui::Button::new(label)).clicked(){let path=if save{rfd::FileDialog::new().set_file_name(if self.export_split{"Doodle-Font-fonts.zip".into()}else{format!("{}.ttf",self.project.family)}).save_file()}else{None};if save&&path.is_none(){continue}let p=self.project.clone();let options=font::ExportOptions{mode:Some(self.export_mode.clone()),locale:Some(self.export_locale.clone()),group:Some(if self.export_group{GROUPS[self.group].0.into()}else{"all".into()}),ids:if self.export_subset{Some(self.project.glyphs.iter().filter(|g|self.export_text.contains(&g.text)).map(|g|g.id.clone()).collect())}else{None},split:Some(self.export_split)};self.spawn(ctx,move||{let result=font::export(&p,&options)?;if let Some(path)=&path{std::fs::write(path,STANDARD.decode(&result.data).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;let report=path.with_extension("report.json");std::fs::write(report,serde_json::to_vec_pretty(&result.reports).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;}Ok(Job::Export(result,path))});}}});
-            if !self.export_report.is_empty(){ui.add_space(10.);egui::ScrollArea::vertical().max_height(230.).show(ui,|ui|{ui.label(&self.export_report);});}
-        });
+            egui::Window::new("나의 폰트 내보내기")
+                .open(&mut open).default_width(570.).default_height(700.).resizable(true)
+                .vscroll(true).max_height(ctx.content_rect().height() * 0.85)
+                .show(ctx, |ui| {
+                    ui.label(RichText::new("그린 글자를, 진짜 폰트로.").size(23.).strong());
+                    ui.add_space(12.);
+                    ui.label("폰트 패밀리 이름");
+                    if ui.text_edit_singleline(&mut self.project.family).changed() { self.changed(); }
+                    ui.add_space(8.);
+                    ui.label("파일 포맷");
+                    ui.horizontal_wrapped(|ui| {
+                        for (value, label) in [("ttf", "TTF"), ("otf", "OTF"), ("woff2", "WOFF2"), ("woff", "WOFF")] {
+                            let response = ui.selectable_value(&mut self.export_format, value.into(), label);
+                            if response.changed() { self.export_report.clear(); }
+                            #[cfg(feature = "ui-qa")]
+                            { self.qa_export_formats.insert(value.into(), response.rect); }
+                        }
+                    });
+                    chip(ui, match self.export_format.as_str() {
+                        "otf" => "컴퓨터에 설치 · 디자인 작업용 OpenType 폰트",
+                        "woff2" => "웹사이트용 · 압축된 웹폰트",
+                        "woff" => "웹사이트용 · WOFF 지원 환경에 제공하는 웹폰트",
+                        _ => "컴퓨터에 설치 · 일반 문서와 편집 작업용 TrueType 폰트",
+                    });
+                    ui.add_space(8.);
+                    ui.label("글자 표현 방식");
+                    egui::ComboBox::from_id_salt("export-mode")
+                        .selected_text(match self.export_mode.as_str() { "mono" => "단색 · 이미지 실루엣 변환", "bitmap" => "비트맵 · 그림 그대로", _ => "컬러 · 벡터 레이어" })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.export_mode, "color".into(), "컬러 · 벡터 레이어");
+                            ui.selectable_value(&mut self.export_mode, "mono".into(), "단색 · 이미지 실루엣 변환");
+                            ui.selectable_value(&mut self.export_mode, "bitmap".into(), "비트맵 · 그림 그대로");
+                        });
+                    ui.add_space(8.);
+                    ui.label("출력 범위");
+                    egui::ComboBox::from_id_salt("export-locale")
+                        .selected_text(match self.export_locale.as_str() { "ko" => "한국어용", "ja" => "일본어용", "default" => "공통 자형만", _ => "통합 · 지역별 자형" })
+                        .show_ui(ui, |ui| {
+                            for (v, l) in [("combined", "통합 · 지역별 자형"), ("ko", "한국어용"), ("ja", "일본어용"), ("default", "공통 자형만")] {
+                                ui.selectable_value(&mut self.export_locale, v.into(), l);
+                            }
+                        });
+                    ui.checkbox(&mut self.export_subset, "이 문장에 필요한 글리프만 출력");
+                    if self.export_subset { ui.text_edit_multiline(&mut self.export_text); }
+                    ui.checkbox(&mut self.export_group, "현재 문자 모음만 출력");
+                    ui.checkbox(&mut self.export_split, "문자 모음별 분할 · ZIP");
+                    ui.add_space(12.);
+                    let count = self.project.glyphs.iter().filter(|g| g.status == "edited" || g.status == "blank").count();
+                    ui.label(format!("프로젝트 작성 항목 {count}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다."));
+                    chip(ui, "시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요.");
+                    chip(ui, "컬러 모드에 이미지가 있으면 비트맵으로 출력합니다. 단색 모드는 이미지를 실루엣으로 변환해요.");
+                    chip(ui, "컬러·비트맵 표시 여부는 사용하는 앱이나 브라우저에 따라 달라집니다.");
+                    ui.add_space(12.);
+                    ui.horizontal(|ui| {
+                        for (save, label) in [(false, "출력 전 검사"), (true, "파일로 저장")] {
+                            let button = ui.add_enabled(self.job.is_none(), egui::Button::new(label));
+                            #[cfg(feature = "ui-qa")]
+                            if !save { self.qa_export_check = Some(button.rect); }
+                            if button.clicked() {
+                                let ext = if self.export_split { "zip" } else { &self.export_format };
+                                let path = if save {
+                                    rfd::FileDialog::new()
+                                        .add_filter(ext.to_uppercase(), &[ext])
+                                        .set_file_name(if self.export_split { "Doodle-Font-fonts.zip".into() } else { format!("{}.{ext}", self.project.family) })
+                                        .save_file()
+                                } else { None };
+                                if save && path.is_none() { continue; }
+                                if path.as_ref().is_some_and(|p| !p.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case(ext))) {
+                                    self.notify(format!("선택한 포맷에 맞게 파일 이름을 .{ext}로 끝내 주세요."));
+                                    continue;
+                                }
+                                let p = self.project.clone();
+                                let options = font::ExportOptions {
+                                    format: Some(self.export_format.clone()),
+                                    mode: Some(self.export_mode.clone()),
+                                    locale: Some(self.export_locale.clone()),
+                                    group: Some(if self.export_group { GROUPS[self.group].0.into() } else { "all".into() }),
+                                    ids: if self.export_subset { Some(self.project.glyphs.iter().filter(|g| self.export_text.contains(&g.text)).map(|g| g.id.clone()).collect()) } else { None },
+                                    split: Some(self.export_split),
+                                };
+                                self.spawn(ctx, move || {
+                                    let result = font::export(&p, &options)?;
+                                    if let Some(path) = &path {
+                                        std::fs::write(path, STANDARD.decode(&result.data).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                                        std::fs::write(path.with_extension("report.json"), serde_json::to_vec_pretty(&result.reports).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+                                    }
+                                    Ok(Job::Export(result, path))
+                                });
+                            }
+                        }
+                    });
+                    if !self.export_report.is_empty() {
+                        ui.add_space(10.);
+                        egui::ScrollArea::vertical().max_height(180.).show(ui, |ui| { ui.label(&self.export_report); });
+                    }
+                });
             if !open {
                 self.export_open = false;
             }
@@ -3047,6 +3148,27 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if let Some(format) = qa_view.strip_prefix("export-") {
+            let format = format.trim_end_matches("-small");
+            input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            let frame = ctx.cumulative_frame_nr();
+            let rect = match frame {
+                3 | 4 => self.qa_export_formats.get(format).copied(),
+                6 | 7 => self.qa_export_check,
+                _ => None,
+            };
+            if let Some(rect) = rect {
+                input.events.push(egui::Event::PointerMoved(rect.center()));
+                input.events.push(egui::Event::PointerButton {
+                    pos: rect.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 3 || frame == 6,
+                    modifiers: Default::default(),
+                });
+            }
+        }
         if qa_view.starts_with("ai-floating") {
             input
                 .events
@@ -3370,7 +3492,15 @@ impl eframe::App for Studio {
                         ));
                         self.ai_status = "프롬프트와 그림을 함께 분석 중".into();
                     }
-                    "export" => self.export_open = true,
+                    "export" | "export-ttf" | "export-otf" | "export-woff" | "export-woff2"
+                    | "export-woff2-small" => {
+                        self.export_open = true;
+                        if std::env::var("DOODLE_QA_VIEW").unwrap().ends_with("-small") {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
+                                1120., 760.,
+                            )));
+                        }
+                    }
                     "hangul" => {
                         self.group = 2;
                         self.refresh_catalog();
@@ -3619,6 +3749,25 @@ impl eframe::App for Studio {
             let connection_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
             let connection_flow = connection_view.starts_with("connections-");
             let floating_flow = connection_view.starts_with("ai-floating");
+            let export_flow = connection_view.starts_with("export-");
+            let export_ready = export_flow
+                && ctx.cumulative_frame_nr() >= 12
+                && self.job.is_none()
+                && !self.export_report.is_empty();
+            if export_flow && self.ai_started.elapsed() > Duration::from_secs(15) {
+                panic!("Export UI timed out: {}", self.message);
+            }
+            if export_ready {
+                let format = connection_view
+                    .strip_prefix("export-")
+                    .unwrap()
+                    .trim_end_matches("-small");
+                assert_eq!(self.export_format, format);
+                assert!(self.export_report.contains(&format.to_uppercase()));
+                assert!(self
+                    .export_report
+                    .contains(if format == "otf" { "CFF " } else { "glyf" }));
+            }
             let connection_ready = connection_flow
                 && ctx.cumulative_frame_nr() >= 12
                 && self.connections_pending.is_none();
@@ -3646,7 +3795,9 @@ impl eframe::App for Studio {
                 && !install_flow
                 && !candidate_live
                 && !connection_flow
+                && !export_flow
                 && !floating_flow)
+                || export_ready
                 || (floating_flow && ctx.cumulative_frame_nr() == 36)
                 || connection_ready
                 || (candidate_live
