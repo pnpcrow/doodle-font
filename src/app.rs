@@ -15,6 +15,9 @@ use std::{
 };
 const DRAW_INK: Color32 = Color32::from_rgb(48, 51, 46);
 #[cfg(feature = "ui-qa")]
+#[path = "layout_qa.rs"]
+mod layout_qa;
+#[cfg(feature = "ui-qa")]
 #[path = "settings_qa.rs"]
 mod settings_qa;
 
@@ -819,10 +822,19 @@ impl Studio {
                 let _ = (index, response);
             }
         });
-        ui.checkbox(
-            &mut self.preferences.reduce_motion,
-            "컴패니언 움직임 줄이기",
-        );
+        self.save_preferences(ui.ctx(), old);
+    }
+    fn companion_options(&mut self, ui: &mut egui::Ui) {
+        let old = self.preferences.clone();
+        ui.strong("컴패니언");
+        let motion = ui
+            .checkbox(&mut self.preferences.reduce_motion, "움직임 줄이기")
+            .on_hover_text("컴패니언과 패널의 애니메이션을 줄입니다.");
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.reduce_motion = Some(motion.rect);
+        }
+        let _ = motion;
         ui.label("컴패니언 표현");
         ui.horizontal(|ui| {
             use doodle_core::companion::Renderer;
@@ -848,11 +860,14 @@ impl Studio {
                     Some(doodle_core::companion_compare::Comparison::new(ui.ctx()));
             }
         });
+        self.save_preferences(ui.ctx(), old);
+    }
+    fn save_preferences(&mut self, ctx: &egui::Context, old: Preferences) {
         if old != self.preferences {
             self.companion
-                .set_renderer(ui.ctx(), self.preferences.companion_renderer);
-            ui.ctx().set_theme(self.preferences.theme.preference());
-            self.palette = Palette::of(ui.ctx());
+                .set_renderer(ctx, self.preferences.companion_renderer);
+            ctx.set_theme(self.preferences.theme.preference());
+            self.palette = Palette::of(ctx);
             if let Err(e) = self
                 .preferences
                 .save(&self.save_path.with_file_name("appearance.json"))
@@ -862,12 +877,19 @@ impl Studio {
         }
     }
     fn top(&mut self, ctx: &egui::Context) {
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.project_name = None;
+            self.qa_settings.project_family = None;
+            self.qa_settings.companion_menu = None;
+            self.qa_renderers = [None; 3];
+        }
         egui::TopBottomPanel::top("top")
-            .exact_height(64.)
+            .exact_height(100.)
             .frame(
                 egui::Frame::new()
                     .fill(self.palette.surface)
-                    .inner_margin(egui::Margin::symmetric(20, 12)),
+                    .inner_margin(egui::Margin::symmetric(20, 8)),
             )
             .show(ctx, |ui| {
                 if self.ai_cancel.is_some() {
@@ -885,24 +907,40 @@ impl Studio {
                         Color32::WHITE,
                     );
                     ui.label(RichText::new("Doodle Font").size(19.).strong());
-                    ui.add_space(16.);
-                    for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
-                        .iter()
-                        .enumerate()
-                    {
-                        if ui
-                            .add_sized(
-                                [if i == 1 { 100. } else { 66. }, 34.],
-                                egui::Button::new(*label).selected(self.tab == i),
+                    ui.add_space(12.);
+                    ui.separator();
+                    let info_width = (ui.available_width() - 300.).max(120.);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(info_width, 40.),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            ui.spacing_mut().item_spacing.y = 2.;
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(&self.project.name).size(15.).strong(),
+                                )
+                                .truncate(),
                             )
-                            .clicked()
-                        {
-                            self.tab = i;
-                            if i == 3 {
-                                self.ai_dock_collapsed = true;
+                            .on_hover_text(format!("프로젝트: {}", self.project.name));
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(format!("폰트 패밀리 · {}", self.project.family))
+                                        .size(11.)
+                                        .color(self.palette.muted),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(&self.project.family);
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_settings.project_heading = Some((
+                                    ui.min_rect(),
+                                    self.project.name.clone(),
+                                    self.project.family.clone(),
+                                ));
                             }
-                        }
-                    }
+                        },
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(
@@ -915,29 +953,53 @@ impl Studio {
                         {
                             self.export_open = true;
                         }
-                        let project_menu = ui.menu_button("프로젝트", |ui| {
-                            self.project_options_ui(ui);
-                            ui.separator();
-                            if ui.button("프로젝트 사본 저장").clicked() {
-                                ui.close();
-                                self.save_copy();
-                            }
-                            if ui.button("열기…").clicked() {
-                                ui.close();
-                                self.open_project(ctx);
-                            }
-                            if ui.button("새 프로젝트").clicked() {
-                                ui.close();
-                                self.fresh_project();
-                            }
-                        });
+                        let project_menu = ui.button("프로젝트");
+                        egui::Popup::from_toggle_button_response(&project_menu)
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .width(340.)
+                            .show(|ui| {
+                                self.project_options_ui(ui);
+                                ui.separator();
+                                if ui.button("프로젝트 사본 저장").clicked() {
+                                    ui.close();
+                                    self.save_copy();
+                                }
+                                if ui.button("열기…").clicked() {
+                                    ui.close();
+                                    self.open_project(ctx);
+                                }
+                                if ui.button("새 프로젝트").clicked() {
+                                    ui.close();
+                                    self.fresh_project();
+                                }
+                            });
                         #[cfg(feature = "ui-qa")]
                         {
-                            self.qa_settings.project_menu = Some(project_menu.response.rect);
+                            self.qa_settings.project_menu = Some(project_menu.rect);
                         }
                         let _ = project_menu;
                         ui.menu_button("화면", |ui| self.appearance_options(ui));
                     });
+                });
+                ui.add_space(8.);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.;
+                    for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
+                        .iter()
+                        .enumerate()
+                    {
+                        let tab = navigation_tab(ui, label, self.tab == i, self.palette);
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_settings.tabs[i] = Some(tab.rect);
+                        }
+                        if tab.clicked() {
+                            self.tab = i;
+                            if i == 3 {
+                                self.ai_dock_collapsed = true;
+                            }
+                        }
+                    }
                 });
             });
     }
@@ -974,13 +1036,27 @@ impl Studio {
                         "이 기기에 저장됨"
                     });
                     ui.separator();
-                    ui.small(format!(
-                        "{}  /  {}개 작업 글리프",
-                        self.project.name,
-                        self.project.glyphs.len()
-                    ));
+                    ui.add_sized(
+                        [(ui.available_width() - 450.).max(80.), 20.],
+                        egui::Label::new(
+                            RichText::new(format!(
+                                "{}  /  {}개 작업 글리프",
+                                self.project.name,
+                                self.project.glyphs.len()
+                            ))
+                            .size(12.),
+                        )
+                        .truncate(),
+                    );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("도움말  ?").clicked() {
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new("도움말  ?").size(12.))
+                                    .frame(false)
+                                    .min_size(Vec2::new(64., 20.)),
+                            )
+                            .clicked()
+                        {
                             self.help = true;
                         }
                         ui.small("두들 폰트 0.1.0");
@@ -991,7 +1067,8 @@ impl Studio {
                                     "어시스트 열기 ↑"
                                 } else {
                                     "어시스트 접기 ↓"
-                                }),
+                                })
+                                .frame(false),
                             );
                             self.ai_dock_restore = Some(restore.rect);
                             #[cfg(feature = "ui-qa")]
@@ -1054,7 +1131,7 @@ impl Studio {
                             .size(12.)
                             .color(self.palette.muted),
                     );
-                    if ui.small_button("+ 문자 추가").clicked() {
+                    if text_button(ui, "+ 문자 추가").clicked() {
                         self.add_open = true;
                     }
                 });
@@ -1221,493 +1298,622 @@ fn chip(ui: &mut egui::Ui, label: &str) {
             .color(ui.visuals().weak_text_color()),
     );
 }
+fn text_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+    let text = ui.painter().layout_no_wrap(
+        label.into(),
+        FontId::proportional(12.),
+        ui.visuals().text_color(),
+    );
+    let response = ui.add(
+        egui::Button::new(RichText::new(label).size(12.))
+            .frame(false)
+            .small()
+            .min_size(Vec2::new(text.size().x + 16., 28.)),
+    );
+    if response.hovered() || response.has_focus() {
+        ui.painter().hline(
+            response.rect.x_range().shrink(8.),
+            response.rect.bottom() - 3.,
+            Stroke::new(1_f32, Palette::of(ui.ctx()).accent),
+        );
+    }
+    response
+}
+fn navigation_tab(
+    ui: &mut egui::Ui,
+    label: &str,
+    selected: bool,
+    palette: Palette,
+) -> egui::Response {
+    let response = ui.add_sized(
+        [
+            if label == "문장 미리보기" {
+                128.
+            } else {
+                80.
+            },
+            36.,
+        ],
+        egui::Button::new(RichText::new(label).color(if selected {
+            palette.accent
+        } else {
+            palette.muted
+        }))
+        .frame(false),
+    );
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::SelectableLabel,
+            ui.is_enabled(),
+            selected,
+            label,
+        )
+    });
+    if selected || response.hovered() || response.has_focus() {
+        ui.painter().hline(
+            response.rect.x_range(),
+            response.rect.bottom() - 1.,
+            Stroke::new(if selected { 2_f32 } else { 1_f32 }, palette.accent),
+        );
+    }
+    response
+}
 impl Studio {
     fn properties(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::right("properties")
-            .exact_width(278.)
+        let openness = ctx.animate_bool_with_time_and_easing(
+            egui::Id::new("properties-openness"),
+            self.show_properties,
+            if self.preferences.reduce_motion {
+                0.
+            } else {
+                0.24
+            },
+            egui::emath::easing::cubic_out,
+        );
+        let panel = egui::SidePanel::right("properties")
+            .exact_width(egui::lerp(48. ..=278., openness))
             .resizable(false)
             .frame(
                 egui::Frame::new()
                     .fill(self.palette.surface)
-                    .inner_margin(18),
+                    .inner_margin(0),
             )
             .show(ctx, |ui| {
                 if self.ai_cancel.is_some() {
                     ui.disable();
                 }
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    if self.project.glyphs.is_empty() {
-                        return;
-                    }
-                    let g = &self.project.glyphs[self.selected];
-                    let text = g.text.clone();
-                    let mut locked = g.locked;
-                    let current_status = g.status.clone();
-                    let locale = g.locale.clone();
-                    let mapping = g.mapping.clone();
-                    let mut advance = g.artwork.advance;
-                    ui.add_space(9.);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("글리프 속성").size(17.).strong());
+                let bounds = ui.max_rect();
+                let toggle_rect = Rect::from_min_size(
+                    Pos2::new(bounds.right() - 40., bounds.top() + 12.),
+                    Vec2::splat(32.),
+                );
+                let toggle = ui
+                    .put(
+                        toggle_rect,
+                        egui::Button::new(
+                            RichText::new(if self.show_properties { "›" } else { "‹" }).size(24.),
+                        )
+                        .frame(false),
+                    )
+                    .on_hover_text(if self.show_properties {
+                        "레이어·속성 접기"
+                    } else {
+                        "레이어·속성 펼치기"
                     });
-                    let candidate_count = g.candidates.len();
-                    ui.add_space(12.);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(display(&text)).size(30.));
-                        ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new(codepoints(&text))
-                                    .size(10.)
-                                    .color(self.palette.muted),
-                            );
-                            chip(
-                                ui,
-                                match locale.as_str() {
-                                    "ko" => "한국어 자형",
-                                    "ja" => "일본어 자형",
-                                    _ => "공통 자형",
-                                },
-                            );
-                        });
-                    });
-                    chip(
-                        ui,
-                        match mapping.as_str() {
-                            "control" => "제어 문자 · 확인 전용",
-                            "custom" => "사용자 지정 문자열 매핑",
-                            "sequence" => "유니코드 시퀀스 · 원문 보존",
-                            "pua" => "사적 사용 영역 · 사용자 정의",
-                            _ => "단일 유니코드 문자",
-                        },
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_settings.sidebar_toggle = Some(toggle.rect);
+                }
+                if toggle.clicked() {
+                    self.show_properties = !self.show_properties;
+                }
+                if openness > 0.6 {
+                    ui.painter().with_clip_rect(bounds).text(
+                        Pos2::new(bounds.left() + 18., bounds.top() + 28.),
+                        Align2::LEFT_CENTER,
+                        "레이어 · 속성",
+                        FontId::proportional(16.),
+                        self.palette.text.gamma_multiply(openness),
                     );
-                    if candidate_count > 0
-                        && ui
-                            .button(format!("AI 후보 {candidate_count}개 보기 · 채택"))
-                            .clicked()
-                    {
-                        self.open_candidate_review();
-                    }
-                    ui.add_space(7.);
-                    if ui.checkbox(&mut locked, "글리프 잠금").changed() {
+                } else if openness == 0. {
+                    ui.painter().text(
+                        Pos2::new(bounds.center().x, bounds.top() + 64.),
+                        Align2::CENTER_CENTER,
+                        "레이어\n속성",
+                        FontId::proportional(11.),
+                        self.palette.muted,
+                    );
+                }
+                if openness == 0. {
+                    return;
+                }
+                let body_rect = Rect::from_min_size(
+                    bounds.min + Vec2::new(18., 56.),
+                    Vec2::new(242., (bounds.height() - 68.).max(0.)),
+                );
+                let mut body = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(body_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                body.set_clip_rect(bounds.intersect(body_rect));
+                body.set_opacity(openness);
+                if openness < 1. {
+                    body.disable();
+                }
+                self.properties_contents(&mut body);
+            });
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.sidebar = Some(panel.response.rect);
+        }
+        let _ = panel;
+    }
+    fn properties_contents(&mut self, ui: &mut egui::Ui) {
+        egui::ScrollArea::vertical()
+            .id_salt("properties-scroll")
+            .show(ui, |ui| {
+                if self.project.glyphs.is_empty() {
+                    return;
+                }
+                let g = &self.project.glyphs[self.selected];
+                let text = g.text.clone();
+                let mut locked = g.locked;
+                let current_status = g.status.clone();
+                let locale = g.locale.clone();
+                let mapping = g.mapping.clone();
+                let mut advance = g.artwork.advance;
+                ui.add_space(9.);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("글리프 속성").size(17.).strong());
+                });
+                let candidate_count = g.candidates.len();
+                ui.add_space(12.);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(display(&text)).size(30.));
+                    ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(codepoints(&text))
+                                .size(10.)
+                                .color(self.palette.muted),
+                        );
+                        chip(
+                            ui,
+                            match locale.as_str() {
+                                "ko" => "한국어 자형",
+                                "ja" => "일본어 자형",
+                                _ => "공통 자형",
+                            },
+                        );
+                    });
+                });
+                chip(
+                    ui,
+                    match mapping.as_str() {
+                        "control" => "제어 문자 · 확인 전용",
+                        "custom" => "사용자 지정 문자열 매핑",
+                        "sequence" => "유니코드 시퀀스 · 원문 보존",
+                        "pua" => "사적 사용 영역 · 사용자 정의",
+                        _ => "단일 유니코드 문자",
+                    },
+                );
+                if candidate_count > 0
+                    && ui
+                        .button(format!("AI 후보 {candidate_count}개 보기 · 채택"))
+                        .clicked()
+                {
+                    self.open_candidate_review();
+                }
+                ui.add_space(7.);
+                if ui.checkbox(&mut locked, "글리프 잠금").changed() {
+                    self.edit(|g| {
+                        g.locked = locked;
+                        Ok(())
+                    });
+                }
+                ui.add_enabled_ui(!locked && mapping != "control", |ui| {
+                    let mut state = current_status.clone();
+                    egui::ComboBox::from_id_salt("status")
+                        .selected_text(status(&state))
+                        .show_ui(ui, |ui| {
+                            for v in ["missing", "edited", "blank", "system", "unsupported"] {
+                                ui.selectable_value(&mut state, v.into(), status(v));
+                            }
+                        });
+                    if state != current_status {
                         self.edit(|g| {
-                            g.locked = locked;
+                            g.status = state;
                             Ok(())
                         });
                     }
-                    ui.add_enabled_ui(!locked && mapping != "control", |ui| {
-                        let mut state = current_status.clone();
-                        egui::ComboBox::from_id_salt("status")
-                            .selected_text(status(&state))
-                            .show_ui(ui, |ui| {
-                                for v in ["missing", "edited", "blank", "system", "unsupported"] {
-                                    ui.selectable_value(&mut state, v.into(), status(v));
-                                }
-                            });
-                        if state != current_status {
-                            self.edit(|g| {
-                                g.status = state;
-                                Ok(())
-                            });
-                        }
-                        ui.add_space(6.);
-                        ui.label(RichText::new("글자 폭").size(12.).color(self.palette.muted));
+                    ui.add_space(6.);
+                    ui.label(RichText::new("글자 폭").size(12.).color(self.palette.muted));
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut advance)
+                                .range(0.0..=4000.)
+                                .speed(5.)
+                                .suffix(" units"),
+                        )
+                        .changed()
+                    {
+                        self.edit(|g| {
+                            check(editable(g), "템플릿 편집 권한이 없어요.")?;
+                            g.artwork.advance = advance;
+                            if g.status == "missing" {
+                                g.status = "blank".into();
+                            }
+                            Ok(())
+                        });
+                    }
+                });
+                ui.add_space(15.);
+                ui.separator();
+                ui.add_space(10.);
+                ui.horizontal(|ui| {
+                    ui.strong("레이어");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        chip(
+                            ui,
+                            &format!(
+                                "{}개",
+                                self.project.glyphs[self.selected].artwork.shapes.len()
+                            ),
+                        );
+                    });
+                });
+                ui.add_space(6.);
+                let layers: Vec<_> = self.project.glyphs[self.selected]
+                    .artwork
+                    .shapes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, s)| (i, s.name.clone(), s.visible, s.locked))
+                    .collect();
+                let enabled = editable(&self.project.glyphs[self.selected]);
+                for (i, name, mut visible, mut lock) in layers.into_iter().rev() {
+                    ui.horizontal(|ui| {
                         if ui
-                            .add(
-                                egui::DragValue::new(&mut advance)
-                                    .range(0.0..=4000.)
-                                    .speed(5.)
-                                    .suffix(" units"),
-                            )
+                            .add_enabled(enabled, egui::Checkbox::without_text(&mut visible))
                             .changed()
                         {
                             self.edit(|g| {
-                                check(editable(g), "템플릿 편집 권한이 없어요.")?;
-                                g.artwork.advance = advance;
-                                if g.status == "missing" {
-                                    g.status = "blank".into();
-                                }
+                                g.artwork.shapes[i].visible = visible;
+                                Ok(())
+                            });
+                        }
+                        if ui
+                            .selectable_label(self.layer == Some(i), RichText::new(name).size(12.))
+                            .clicked()
+                        {
+                            self.layer = Some(i);
+                        }
+                        if ui
+                            .add_enabled(
+                                enabled,
+                                egui::Button::new(if lock { "잠김" } else { "잠금" })
+                                    .frame(false)
+                                    .min_size(Vec2::new(44., 28.)),
+                            )
+                            .clicked()
+                        {
+                            lock = !lock;
+                            self.edit(|g| {
+                                g.artwork.shapes[i].locked = lock;
                                 Ok(())
                             });
                         }
                     });
-                    ui.add_space(15.);
-                    ui.separator();
-                    ui.add_space(10.);
-                    ui.horizontal(|ui| {
-                        ui.strong("레이어");
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            chip(
-                                ui,
-                                &format!(
-                                    "{}개",
-                                    self.project.glyphs[self.selected].artwork.shapes.len()
-                                ),
-                            );
-                        });
-                    });
-                    ui.add_space(6.);
-                    let layers: Vec<_> = self.project.glyphs[self.selected]
-                        .artwork
-                        .shapes
-                        .iter()
-                        .enumerate()
-                        .map(|(i, s)| (i, s.name.clone(), s.visible, s.locked))
-                        .collect();
-                    let enabled = editable(&self.project.glyphs[self.selected]);
-                    for (i, name, mut visible, mut lock) in layers.into_iter().rev() {
+                }
+                if let Some(i) = self
+                    .layer
+                    .filter(|i| *i < self.project.glyphs[self.selected].artwork.shapes.len())
+                {
+                    let s = &self.project.glyphs[self.selected].artwork.shapes[i];
+                    let mut opacity = s.opacity;
+                    let mut stroke = s.stroke;
+                    let mut fill = s.fill;
+                    let mut xy = [s.x, s.y, s.width, s.height];
+                    let is_path = s.kind == "path";
+                    let is_image = s.kind == "image";
+                    let is_outline = s.kind == "outline";
+                    let layer_enabled = enabled && !s.locked;
+                    let mut rgba = color32(&s.color);
+                    let mut name = s.name.clone();
+                    ui.add_space(8.);
+                    ui.add_enabled_ui(layer_enabled, |ui| {
+                        if ui.text_edit_singleline(&mut name).changed() {
+                            self.edit(|g| {
+                                g.artwork.shapes[i].name = name;
+                                Ok(())
+                            });
+                        }
                         ui.horizontal(|ui| {
-                            if ui
-                                .add_enabled(enabled, egui::Checkbox::without_text(&mut visible))
-                                .changed()
-                            {
+                            if ui.color_edit_button_srgba(&mut rgba).changed() {
+                                let c =
+                                    format!("#{:02x}{:02x}{:02x}", rgba.r(), rgba.g(), rgba.b());
                                 self.edit(|g| {
-                                    g.artwork.shapes[i].visible = visible;
+                                    g.artwork.shapes[i].color = c;
                                     Ok(())
                                 });
                             }
-                            if ui
-                                .selectable_label(
-                                    self.layer == Some(i),
-                                    RichText::new(name).size(12.),
-                                )
-                                .clicked()
-                            {
-                                self.layer = Some(i);
-                            }
-                            if ui
-                                .add_enabled(
-                                    enabled,
-                                    egui::Button::new(if lock { "잠김" } else { "잠금" }).small(),
-                                )
-                                .clicked()
-                            {
-                                lock = !lock;
+                            if !is_outline && ui.checkbox(&mut fill, "채우기").changed() {
                                 self.edit(|g| {
-                                    g.artwork.shapes[i].locked = lock;
+                                    g.artwork.shapes[i].fill = fill;
                                     Ok(())
                                 });
                             }
                         });
-                    }
-                    if let Some(i) = self
-                        .layer
-                        .filter(|i| *i < self.project.glyphs[self.selected].artwork.shapes.len())
-                    {
-                        let s = &self.project.glyphs[self.selected].artwork.shapes[i];
-                        let mut opacity = s.opacity;
-                        let mut stroke = s.stroke;
-                        let mut fill = s.fill;
-                        let mut xy = [s.x, s.y, s.width, s.height];
-                        let is_path = s.kind == "path";
-                        let is_image = s.kind == "image";
-                        let is_outline = s.kind == "outline";
-                        let layer_enabled = enabled && !s.locked;
-                        let mut rgba = color32(&s.color);
-                        let mut name = s.name.clone();
-                        ui.add_space(8.);
-                        ui.add_enabled_ui(layer_enabled, |ui| {
-                            if ui.text_edit_singleline(&mut name).changed() {
-                                self.edit(|g| {
-                                    g.artwork.shapes[i].name = name;
-                                    Ok(())
-                                });
-                            }
-                            ui.horizontal(|ui| {
-                                if ui.color_edit_button_srgba(&mut rgba).changed() {
-                                    let c = format!(
-                                        "#{:02x}{:02x}{:02x}",
-                                        rgba.r(),
-                                        rgba.g(),
-                                        rgba.b()
-                                    );
-                                    self.edit(|g| {
-                                        g.artwork.shapes[i].color = c;
-                                        Ok(())
-                                    });
-                                }
-                                if !is_outline && ui.checkbox(&mut fill, "채우기").changed() {
-                                    self.edit(|g| {
-                                        g.artwork.shapes[i].fill = fill;
-                                        Ok(())
-                                    });
-                                }
+                        if ui
+                            .add(egui::Slider::new(&mut opacity, 0.0..=1.).text("불투명도"))
+                            .changed()
+                        {
+                            self.edit(|g| {
+                                g.artwork.shapes[i].opacity = opacity;
+                                Ok(())
                             });
-                            if ui
-                                .add(egui::Slider::new(&mut opacity, 0.0..=1.).text("불투명도"))
+                        }
+                        if !is_image
+                            && !is_outline
+                            && ui
+                                .add(egui::Slider::new(&mut stroke, 1.0..=180.).text("획 굵기"))
                                 .changed()
-                            {
-                                self.edit(|g| {
-                                    g.artwork.shapes[i].opacity = opacity;
-                                    Ok(())
-                                });
-                            }
-                            if !is_image
-                                && !is_outline
-                                && ui
-                                    .add(egui::Slider::new(&mut stroke, 1.0..=180.).text("획 굵기"))
-                                    .changed()
-                            {
-                                self.edit(|g| {
-                                    g.artwork.shapes[i].stroke = stroke;
-                                    Ok(())
-                                });
-                            }
-                            if !is_path {
-                                ui.horizontal(|ui| {
-                                    ui.small("X / Y");
-                                    let changed = ui
-                                        .add(
-                                            egui::DragValue::new(&mut xy[0]).range(-4000.0..=4000.),
-                                        )
-                                        .changed()
-                                        | ui.add(
-                                            egui::DragValue::new(&mut xy[1]).range(-4000.0..=4000.),
-                                        )
-                                        .changed();
-                                    if changed {
-                                        self.edit(|g| {
-                                            let s = &mut g.artwork.shapes[i];
-                                            s.x = xy[0];
-                                            s.y = xy[1];
-                                            Ok(())
-                                        });
-                                    }
-                                });
-                                ui.horizontal(|ui| {
-                                    ui.small("W / H");
-                                    let changed = ui
-                                        .add(egui::DragValue::new(&mut xy[2]).range(1.0..=4000.))
-                                        .changed()
-                                        | ui.add(
-                                            egui::DragValue::new(&mut xy[3]).range(1.0..=4000.),
-                                        )
-                                        .changed();
-                                    if changed {
-                                        self.edit(|g| {
-                                            let s = &mut g.artwork.shapes[i];
-                                            s.width = xy[2];
-                                            s.height = xy[3];
-                                            Ok(())
-                                        });
-                                    }
-                                });
-                            }
+                        {
+                            self.edit(|g| {
+                                g.artwork.shapes[i].stroke = stroke;
+                                Ok(())
+                            });
+                        }
+                        if !is_path {
                             ui.horizontal(|ui| {
-                                if ui.small_button("복제").clicked() {
+                                ui.small("X / Y");
+                                let changed = ui
+                                    .add(egui::DragValue::new(&mut xy[0]).range(-4000.0..=4000.))
+                                    .changed()
+                                    | ui.add(
+                                        egui::DragValue::new(&mut xy[1]).range(-4000.0..=4000.),
+                                    )
+                                    .changed();
+                                if changed {
                                     self.edit(|g| {
-                                        let mut s = g.artwork.shapes[i].clone();
-                                        s.id = uid();
-                                        s.x += 30.;
-                                        s.y += 30.;
-                                        for pt in &mut s.points {
-                                            pt[0] += 30.;
-                                            pt[1] += 30.;
-                                        }
-                                        g.artwork.shapes.push(s);
+                                        let s = &mut g.artwork.shapes[i];
+                                        s.x = xy[0];
+                                        s.y = xy[1];
                                         Ok(())
                                     });
-                                }
-                                if ui.small_button("위로").clicked()
-                                    && i + 1
-                                        < self.project.glyphs[self.selected].artwork.shapes.len()
-                                {
-                                    self.edit(|g| {
-                                        g.artwork.shapes.swap(i, i + 1);
-                                        Ok(())
-                                    });
-                                    self.layer = Some(i + 1);
-                                }
-                                if ui.small_button("아래로").clicked() && i > 0 {
-                                    self.edit(|g| {
-                                        g.artwork.shapes.swap(i, i - 1);
-                                        Ok(())
-                                    });
-                                    self.layer = Some(i - 1);
-                                }
-                                if ui.small_button("삭제").clicked() {
-                                    self.edit(|g| {
-                                        g.artwork.shapes.remove(i);
-                                        Ok(())
-                                    });
-                                    self.layer = None;
                                 }
                             });
-                            if is_path && ui.small_button("선 부드럽게 보정").clicked() {
+                            ui.horizontal(|ui| {
+                                ui.small("W / H");
+                                let changed = ui
+                                    .add(egui::DragValue::new(&mut xy[2]).range(1.0..=4000.))
+                                    .changed()
+                                    | ui.add(egui::DragValue::new(&mut xy[3]).range(1.0..=4000.))
+                                        .changed();
+                                if changed {
+                                    self.edit(|g| {
+                                        let s = &mut g.artwork.shapes[i];
+                                        s.width = xy[2];
+                                        s.height = xy[3];
+                                        Ok(())
+                                    });
+                                }
+                            });
+                        }
+                        ui.horizontal(|ui| {
+                            if text_button(ui, "복제").clicked() {
                                 self.edit(|g| {
-                                    smooth(&mut g.artwork.shapes[i].points);
+                                    let mut s = g.artwork.shapes[i].clone();
+                                    s.id = uid();
+                                    s.x += 30.;
+                                    s.y += 30.;
+                                    for pt in &mut s.points {
+                                        pt[0] += 30.;
+                                        pt[1] += 30.;
+                                    }
+                                    g.artwork.shapes.push(s);
                                     Ok(())
                                 });
                             }
-                            if is_image && ui.small_button("이미지 → 단색 벡터 변환").clicked()
+                            if text_button(ui, "위로").clicked()
+                                && i + 1 < self.project.glyphs[self.selected].artwork.shapes.len()
                             {
-                                let polygons = font::polygons(
-                                    &self.project.glyphs[self.selected].artwork.shapes[i],
-                                );
-                                match polygons {
-                                    Ok(polys) => self.edit(|g| {
-                                        if g.baseline.is_none() {
-                                            g.baseline = Some(g.artwork.clone());
-                                        }
-                                        g.artwork.shapes[i].visible = false;
-                                        g.artwork.shapes[i].locked = true;
-                                        g.artwork.shapes[i].name = "원본 이미지 · 숨김 보관".into();
-                                        for pts in polys {
-                                            let mut s = path(&pts);
-                                            s.fill = true;
-                                            g.artwork.shapes.push(s);
-                                        }
-                                        Ok(())
-                                    }),
-                                    Err(e) => self.notify(e),
-                                }
+                                self.edit(|g| {
+                                    g.artwork.shapes.swap(i, i + 1);
+                                    Ok(())
+                                });
+                                self.layer = Some(i + 1);
+                            }
+                            if text_button(ui, "아래로").clicked() && i > 0 {
+                                self.edit(|g| {
+                                    g.artwork.shapes.swap(i, i - 1);
+                                    Ok(())
+                                });
+                                self.layer = Some(i - 1);
+                            }
+                            if text_button(ui, "삭제").clicked() {
+                                self.edit(|g| {
+                                    g.artwork.shapes.remove(i);
+                                    Ok(())
+                                });
                                 self.layer = None;
                             }
                         });
-                    }
-                    ui.add_space(14.);
-                    ui.separator();
-                    ui.add_space(10.);
-                    ui.strong("원본과 기준 디자인");
-                    ui.add_space(8.);
-                    let g = &self.project.glyphs[self.selected];
-                    if let Some(t) = &g.template {
-                        chip(ui, &format!("{} · v{}", t.name, t.version));
-                        chip(ui, &format!("{} / {}", t.provider, t.license));
-                    } else {
-                        chip(ui, "템플릿 연결 없음");
-                    }
-                    let original = g.template.as_ref().and_then(|t| t.original.as_ref());
-                    if let Some(art) = original {
-                        let (rect, _) = ui.allocate_exact_size(Vec2::new(72., 72.), Sense::hover());
-                        paint_art(
-                            ui.ctx(),
-                            ui.painter(),
-                            rect,
-                            art,
-                            "original",
-                            self.revision,
-                            &mut self.textures,
-                        );
-                    }
-                    ui.add_enabled_ui(!locked && mapping != "control", |ui| {
-                        if ui.button("템플릿 원본으로 복원").clicked() {
-                            self.edit(|g| restore(g, "template"));
-                        }
-                        ui.horizontal(|ui| {
-                            if ui.button("기준 저장").clicked() {
-                                self.edit(|g| {
-                                    g.baseline = Some(g.artwork.clone());
-                                    Ok(())
-                                });
-                            }
-                            if ui.button("기준 복원").clicked() {
-                                self.edit(|g| restore(g, "baseline"));
-                            }
-                        });
-                        if ui.button("사용자 정의 해제 · 시스템 표시").clicked() {
-                            self.edit(|g| restore(g, "system"));
-                        }
-                        if ui.button("선택한 변형에 그림 복사…").clicked() {
-                            self.variant_targets.clear();
-                            self.variant_open = true;
-                        }
-                    });
-                    ui.add_space(14.);
-                    ui.separator();
-                    ui.add_space(10.);
-                    egui::CollapsingHeader::new("부품 보관함").show(ui, |ui| {
-                        ui.text_edit_singleline(&mut self.component_name);
-                        if ui.button("현재 그림을 부품으로 저장").clicked() {
-                            let g = &self.project.glyphs[self.selected];
-                            self.project.components.push(Component {
-                                id: uid(),
-                                name: self.component_name.clone(),
-                                artwork: g.artwork.clone(),
-                                template: g.template.clone(),
-                                sources: g.sources.clone(),
+                        if is_path && text_button(ui, "선 부드럽게 보정").clicked() {
+                            self.edit(|g| {
+                                smooth(&mut g.artwork.shapes[i].points);
+                                Ok(())
                             });
-                            self.changed();
                         }
-                        let entries: Vec<_> = self
-                            .project
-                            .components
-                            .iter()
-                            .enumerate()
-                            .map(|(i, c)| (i, c.name.clone()))
-                            .collect();
-                        for (i, name) in entries {
-                            if ui.button(format!("+ {name}")).clicked() {
-                                let c = self.project.components[i].clone();
-                                self.edit(|g| {
-                                    check(editable(g), "글리프가 보호되어 있어요.")?;
-                                    check(
-                                        c.template
-                                            .iter()
-                                            .chain(&c.sources)
-                                            .all(|t| t.permissions.edit),
-                                        "부품의 템플릿에 편집 권한이 없어요.",
-                                    )?;
-                                    for t in c.template.into_iter().chain(c.sources) {
-                                        if !g.sources.iter().any(|v| v.id == t.id) {
-                                            g.sources.push(t)
-                                        }
+                        if is_image && text_button(ui, "이미지 → 단색 벡터 변환").clicked()
+                        {
+                            let polygons = font::polygons(
+                                &self.project.glyphs[self.selected].artwork.shapes[i],
+                            );
+                            match polygons {
+                                Ok(polys) => self.edit(|g| {
+                                    if g.baseline.is_none() {
+                                        g.baseline = Some(g.artwork.clone());
                                     }
-                                    for mut s in c.artwork.shapes {
-                                        s.id = uid();
+                                    g.artwork.shapes[i].visible = false;
+                                    g.artwork.shapes[i].locked = true;
+                                    g.artwork.shapes[i].name = "원본 이미지 · 숨김 보관".into();
+                                    for pts in polys {
+                                        let mut s = path(&pts);
+                                        s.fill = true;
                                         g.artwork.shapes.push(s);
                                     }
-                                    g.status = "edited".into();
                                     Ok(())
-                                });
+                                }),
+                                Err(e) => self.notify(e),
                             }
+                            self.layer = None;
                         }
                     });
-                    egui::CollapsingHeader::new("AI 후보").show(ui, |ui| {
-                        if ui
-                            .add_enabled(
-                                self.job.is_none(),
-                                egui::Button::new("현재 글리프 후보 생성"),
-                            )
-                            .clicked()
-                        {
-                            self.generate_ai(ui.ctx());
-                        }
-                        if ui.button("후보 비교 화면 열기").clicked() {
-                            self.open_candidate_review();
-                        }
-                        let candidates: Vec<_> = self.project.glyphs[self.selected]
-                            .candidates
-                            .iter()
-                            .map(|c| (c.id.clone(), c.name.clone()))
-                            .collect();
-                        for (id, name) in candidates {
-                            ui.horizontal(|ui| {
-                                let art = &self.project.glyphs[self.selected]
-                                    .candidates
-                                    .iter()
-                                    .find(|c| c.id == id)
-                                    .unwrap()
-                                    .artwork;
-                                let (rect, _) =
-                                    ui.allocate_exact_size(Vec2::splat(56.), Sense::hover());
-                                paint_art(
-                                    ui.ctx(),
-                                    ui.painter(),
-                                    rect,
-                                    art,
-                                    &id,
-                                    self.revision,
-                                    &mut self.textures,
-                                );
-                                ui.vertical(|ui| {
-                                    chip(ui, &name);
-                                    if ui.small_button("채택").clicked() {
-                                        self.edit(|g| accept(g, &id));
-                                    }
-                                });
+                }
+                ui.add_space(14.);
+                ui.separator();
+                ui.add_space(10.);
+                ui.strong("원본과 기준 디자인");
+                ui.add_space(8.);
+                let g = &self.project.glyphs[self.selected];
+                if let Some(t) = &g.template {
+                    chip(ui, &format!("{} · v{}", t.name, t.version));
+                    chip(ui, &format!("{} / {}", t.provider, t.license));
+                } else {
+                    chip(ui, "템플릿 연결 없음");
+                }
+                let original = g.template.as_ref().and_then(|t| t.original.as_ref());
+                if let Some(art) = original {
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(72., 72.), Sense::hover());
+                    paint_art(
+                        ui.ctx(),
+                        ui.painter(),
+                        rect,
+                        art,
+                        "original",
+                        self.revision,
+                        &mut self.textures,
+                    );
+                }
+                ui.add_enabled_ui(!locked && mapping != "control", |ui| {
+                    if ui.button("템플릿 원본으로 복원").clicked() {
+                        self.edit(|g| restore(g, "template"));
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button("기준 저장").clicked() {
+                            self.edit(|g| {
+                                g.baseline = Some(g.artwork.clone());
+                                Ok(())
                             });
                         }
+                        if ui.button("기준 복원").clicked() {
+                            self.edit(|g| restore(g, "baseline"));
+                        }
                     });
+                    if ui.button("사용자 정의 해제 · 시스템 표시").clicked() {
+                        self.edit(|g| restore(g, "system"));
+                    }
+                    if ui.button("선택한 변형에 그림 복사…").clicked() {
+                        self.variant_targets.clear();
+                        self.variant_open = true;
+                    }
+                });
+                ui.add_space(14.);
+                ui.separator();
+                ui.add_space(10.);
+                egui::CollapsingHeader::new("부품 보관함").show(ui, |ui| {
+                    ui.text_edit_singleline(&mut self.component_name);
+                    if ui.button("현재 그림을 부품으로 저장").clicked() {
+                        let g = &self.project.glyphs[self.selected];
+                        self.project.components.push(Component {
+                            id: uid(),
+                            name: self.component_name.clone(),
+                            artwork: g.artwork.clone(),
+                            template: g.template.clone(),
+                            sources: g.sources.clone(),
+                        });
+                        self.changed();
+                    }
+                    let entries: Vec<_> = self
+                        .project
+                        .components
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| (i, c.name.clone()))
+                        .collect();
+                    for (i, name) in entries {
+                        if ui.button(format!("+ {name}")).clicked() {
+                            let c = self.project.components[i].clone();
+                            self.edit(|g| {
+                                check(editable(g), "글리프가 보호되어 있어요.")?;
+                                check(
+                                    c.template
+                                        .iter()
+                                        .chain(&c.sources)
+                                        .all(|t| t.permissions.edit),
+                                    "부품의 템플릿에 편집 권한이 없어요.",
+                                )?;
+                                for t in c.template.into_iter().chain(c.sources) {
+                                    if !g.sources.iter().any(|v| v.id == t.id) {
+                                        g.sources.push(t)
+                                    }
+                                }
+                                for mut s in c.artwork.shapes {
+                                    s.id = uid();
+                                    g.artwork.shapes.push(s);
+                                }
+                                g.status = "edited".into();
+                                Ok(())
+                            });
+                        }
+                    }
+                });
+                egui::CollapsingHeader::new("AI 후보").show(ui, |ui| {
+                    if ui
+                        .add_enabled(
+                            self.job.is_none(),
+                            egui::Button::new("현재 글리프 후보 생성"),
+                        )
+                        .clicked()
+                    {
+                        self.generate_ai(ui.ctx());
+                    }
+                    if ui.button("후보 비교 화면 열기").clicked() {
+                        self.open_candidate_review();
+                    }
+                    let candidates: Vec<_> = self.project.glyphs[self.selected]
+                        .candidates
+                        .iter()
+                        .map(|c| (c.id.clone(), c.name.clone()))
+                        .collect();
+                    for (id, name) in candidates {
+                        ui.horizontal(|ui| {
+                            let art = &self.project.glyphs[self.selected]
+                                .candidates
+                                .iter()
+                                .find(|c| c.id == id)
+                                .unwrap()
+                                .artwork;
+                            let (rect, _) =
+                                ui.allocate_exact_size(Vec2::splat(56.), Sense::hover());
+                            paint_art(
+                                ui.ctx(),
+                                ui.painter(),
+                                rect,
+                                art,
+                                &id,
+                                self.revision,
+                                &mut self.textures,
+                            );
+                            ui.vertical(|ui| {
+                                chip(ui, &name);
+                                if text_button(ui, "채택").clicked() {
+                                    self.edit(|g| accept(g, &id));
+                                }
+                            });
+                        });
+                    }
                 });
             });
     }
@@ -1751,7 +1957,6 @@ impl Studio {
                         );
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.toggle_value(&mut self.show_properties, "레이어 · 속성");
                         if ui
                             .add_enabled(!self.redo.is_empty(), egui::Button::new("↪"))
                             .on_hover_text("다시 실행 Ctrl+Y")
@@ -1791,7 +1996,7 @@ impl Studio {
                                     .suffix(" px"),
                             );
                             ui.checkbox(&mut self.fill, "채우기");
-                            if ui.small_button("이미지 +").clicked() {
+                            if text_button(ui, "이미지 +").clicked() {
                                 self.import_image()
                             }
                         });
@@ -1814,7 +2019,11 @@ impl Studio {
                         }
                     }
                     if ui
-                        .small_button("+")
+                        .add(
+                            egui::Button::new("+")
+                                .frame(false)
+                                .min_size(Vec2::splat(28.)),
+                        )
                         .on_hover_text("현재 색을 팔레트에 저장")
                         .clicked()
                     {
@@ -2149,7 +2358,7 @@ impl Studio {
                             .chars()
                             .next()
                             .is_some_and(|c| ('가'..='힣').contains(&c))
-                        && ui.small_button("자모로 조합").clicked()
+                        && text_button(ui, "자모로 조합").clicked()
                     {
                         match compose_hangul(&self.project, &text) {
                             Ok((a, sources)) => self.edit(|g| {
@@ -2300,7 +2509,46 @@ impl Studio {
         );
         ui.add_space(24.);
         egui::ScrollArea::vertical().show(ui,|ui|{
-            let mut apply=None;ui.horizontal_wrapped(|ui|{for t in &self.project.templates{egui::Frame::new().fill(self.palette.surface).stroke(Stroke::new(1_f32,self.palette.line)).corner_radius(14).inner_margin(20).show(ui,|ui|{ui.set_width(215.);let(rect,_)=ui.allocate_exact_size(Vec2::splat(180.),Sense::hover());if let Some(art)=&t.original{ui.painter().rect_filled(rect,8.,Color32::from_rgb(255,254,251));paint_art(ui.ctx(),ui.painter(),rect,art,&t.id,self.revision,&mut self.textures);}else{ui.painter().text(rect.center(),Align2::CENTER_CENTER,"원본 참조 없음",FontId::proportional(16.),self.palette.muted);}ui.label(RichText::new(&t.name).size(18.).strong());chip(ui,&format!("{} · v{}",t.provider,t.version));chip(ui,&t.license);ui.label(RichText::new(&t.attribution).size(10.).color(self.palette.muted));chip(ui,&format!("편집 {} / 폰트 포함 {} / AI {}",if t.permissions.edit{"가능"}else{"제한"},if t.permissions.embed{"가능"}else{"제한"},if t.permissions.ai{"가능"}else{"제한"}));if ui.button("선택한 글리프에 적용").clicked(){apply=Some(t.clone());}});}});
+            let mut apply = None;
+            #[cfg(feature = "ui-qa")]
+            { self.qa_settings.template_cards.clear(); }
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::splat(16.);
+                for t in &self.project.templates {
+                    let card = egui::Frame::new().fill(self.palette.raised)
+                        .stroke(Stroke::new(1_f32, self.palette.line)).corner_radius(14).inner_margin(18)
+                        .show(ui, |ui| {
+                            let (content, _) = ui.allocate_exact_size(Vec2::new(244., 368.), Sense::hover());
+                            let mut card_ui = ui.new_child(egui::UiBuilder::new().max_rect(content).layout(egui::Layout::top_down(egui::Align::Min)));
+                            let ui = &mut card_ui;
+                            // Fixed rows keep every card and action aligned. Long rights text scrolls.
+                            let top = content.min;
+                            let rect = Rect::from_center_size(Pos2::new(top.x + 122., top.y + 80.), Vec2::splat(160.));
+                            ui.painter().rect_filled(rect, 8., Color32::from_rgb(255,254,251));
+                            if let Some(art) = &t.original {
+                                paint_art(ui.ctx(), ui.painter(), rect, art, &t.id, self.revision, &mut self.textures);
+                            } else {
+                                ui.painter().text(rect.center(), Align2::CENTER_CENTER, "원본 참조 없음", FontId::proportional(14.), self.palette.muted);
+                            }
+                            let row = |y, h| Rect::from_min_size(top + Vec2::new(0., y), Vec2::new(244., h));
+                            ui.put(row(172., 26.), egui::Label::new(RichText::new(&t.name).size(18.).strong()).truncate()).on_hover_text(&t.name);
+                            ui.put(row(204., 18.), egui::Label::new(RichText::new(format!("{} · v{}", t.provider, t.version)).size(11.).color(self.palette.muted)).truncate()).on_hover_text(format!("{} · v{}", t.provider, t.version));
+                            ui.scope_builder(egui::UiBuilder::new().max_rect(row(230., 60.)).layout(egui::Layout::top_down(egui::Align::Min)), |ui| {
+                                egui::ScrollArea::vertical().id_salt(("template-rights", &t.id)).max_height(60.).auto_shrink([false, false]).show(ui, |ui| {
+                                    chip(ui, &t.license);
+                                    chip(ui, &t.attribution);
+                                });
+                            });
+                            ui.put(row(300., 26.), egui::Label::new(RichText::new(format!("편집 {} / 폰트 포함 {} / AI {}", if t.permissions.edit {"가능"} else {"제한"}, if t.permissions.embed {"가능"} else {"제한"}, if t.permissions.ai {"가능"} else {"제한"})).size(11.).color(self.palette.muted)));
+                            let action = ui.put(row(336., 32.), egui::Button::new("선택한 글리프에 적용"));
+                            if action.clicked() { apply = Some(t.clone()); }
+                            action.rect
+                        });
+                    #[cfg(feature = "ui-qa")]
+                    { self.qa_settings.template_cards.push((card.response.rect, card.inner)); }
+                    let _ = card;
+                }
+            });
             if let Some(t)=apply{self.edit(|g|apply_template(g,&t));self.tab=0;}
             ui.add_space(24.);ui.separator();ui.add_space(18.);ui.label(RichText::new("내 템플릿 연결").size(22.).strong());ui.label("Apple·Samsung 등 제공자별 자산은 권한을 확인한 원본만 직접 연결하세요. 앱에는 해당 업체 그림이 포함되어 있지 않습니다.");ui.add_space(12.);
             ui.horizontal(|ui|{if ui.button("템플릿 JSON 가져오기").clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Template JSON",&["json"]).pick_file(){let result=(||->Result<Template,String>{check(std::fs::metadata(&path).map_err(|e|e.to_string())?.len()<16_000_000,"템플릿은 16MB 이하여야 해요.")?;let t:Template=serde_json::from_slice(&std::fs::read(path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;t.validate()?;Ok(t)})();match result{Ok(t)=>{if self.project.templates.iter().any(|v|v.id==t.id){self.notify("같은 ID의 템플릿이 이미 있어요. 새 버전은 별도 ID로 가져오세요.");}else{self.project.templates.push(t);self.changed();}},Err(e)=>self.notify(e)}}}
@@ -2797,7 +3045,7 @@ impl Studio {
                                 ("둥근 손글씨", "선택한 글자를 동글동글한 손글씨로 만들어줘.",true),
                                 ("균형 봐주기", "현재 글자의 기준선, 획의 균형과 간격을 살펴보고 개선할 점을 알려줘.",false),
                             ] {
-                                if ui.small_button(label).clicked() { self.ai_prompt=prompt.into(); self.ai_action=drawing; }
+                                if text_button(ui, label).clicked() { self.ai_prompt=prompt.into(); self.ai_action=drawing; }
                             }
                         });
                     }
@@ -2935,7 +3183,16 @@ impl Studio {
                     {
                         self.qa_dock.companion = Some(companion.rect);
                     }
-                    let _ = companion;
+                    let companion = companion.on_hover_text("마우스 오른쪽 버튼으로 컴패니언 설정");
+                    egui::Popup::context_menu(&companion)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                        .show(|ui| {
+                            self.companion_options(ui);
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_settings.companion_menu = Some(ui.min_rect());
+                            }
+                        });
                 });
         }
     }
@@ -3089,6 +3346,8 @@ impl Studio {
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("내 작업실 설정");
         self.appearance_options(ui);
+        ui.add_space(12.);
+        self.companion_options(ui);
         ui.add_space(16.);
         ui.separator();
         ui.add_space(12.);
@@ -3310,7 +3569,12 @@ impl Studio {
             self.changed();
         }
         ui.label("폰트 패밀리");
-        if ui.text_edit_singleline(&mut family).changed() {
+        let family_input = ui.text_edit_singleline(&mut family);
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.project_family = Some(family_input.rect);
+        }
+        if family_input.changed() {
             self.project.family = family;
             self.changed();
         }
@@ -3722,6 +3986,9 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if self.layout_qa_input(ctx, input, &qa_view) {
+            return;
+        }
         if self.settings_qa_input(ctx, input, &qa_view) {
             return;
         }
@@ -4015,6 +4282,7 @@ impl eframe::App for Studio {
                     self.api_provider = "local".into();
                 }
                 self.settings_qa_setup(ctx, &qa_view);
+                self.layout_qa_setup(ctx, &qa_view);
                 match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
                     "renderer-write"
                     | "renderer-restored"
@@ -4645,12 +4913,14 @@ impl eframe::App for Studio {
             }
             if (ctx.cumulative_frame_nr() == 12
                 && !connection_view.starts_with("settings-")
+                && !connection_view.starts_with("layout-")
                 && !install_flow
                 && !candidate_live
                 && !connection_flow
                 && !export_flow
                 && !floating_flow)
                 || self.settings_qa_ready(ctx, &connection_view)
+                || self.layout_qa_ready(ctx, &connection_view)
                 || export_ready
                 || (floating_flow && ctx.cumulative_frame_nr() == 62)
                 || connection_ready
@@ -4722,9 +4992,7 @@ impl eframe::App for Studio {
         self.footer(ctx);
         if self.tab == 0 {
             self.library(ctx);
-            if self.show_properties {
-                self.properties(ctx);
-            }
+            self.properties(ctx);
             self.editor(ctx);
         } else {
             egui::CentralPanel::default()

@@ -7,6 +7,14 @@ pub(super) struct State {
     pub installs: usize,
     pub project_menu: Option<Rect>,
     pub project_name: Option<Rect>,
+    pub project_family: Option<Rect>,
+    pub project_heading: Option<(Rect, String, String)>,
+    pub tabs: [Option<Rect>; 4],
+    pub template_cards: Vec<(Rect, Rect)>,
+    pub sidebar: Option<Rect>,
+    pub sidebar_toggle: Option<Rect>,
+    pub companion_menu: Option<Rect>,
+    pub reduce_motion: Option<Rect>,
     completed: bool,
     request: Option<mpsc::Receiver<serde_json::Value>>,
 }
@@ -90,6 +98,10 @@ impl Studio {
                 }
                 _ => None,
             }
+        } else if view == "settings-project" && (frame == 7 || frame == 8) {
+            self.qa_settings.project_name
+        } else if view == "settings-project" && (frame == 13 || frame == 14) {
+            self.qa_settings.project_family
         } else if frame == 14 || frame == 15 {
             if view == "settings-api-test" || view == "settings-api-error" {
                 self.qa_test_connection
@@ -108,9 +120,38 @@ impl Studio {
             input.events.push(egui::Event::PointerButton {
                 pos: rect.center(),
                 button: egui::PointerButton::Primary,
-                pressed: frame == 3 || frame == 14,
+                pressed: if view == "settings-project" {
+                    [3, 7, 13].contains(&frame)
+                } else {
+                    frame == 3 || frame == 14
+                },
                 modifiers: Default::default(),
             });
+        }
+        if view == "settings-project" {
+            if frame == 9 || frame == 15 {
+                input.events.push(egui::Event::Key {
+                    key: egui::Key::A,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers {
+                        ctrl: true,
+                        command: true,
+                        ..Default::default()
+                    },
+                });
+            }
+            if frame == 10 || frame == 16 {
+                input.events.push(egui::Event::Text(
+                    if frame == 10 {
+                        "봄날의 낙서"
+                    } else {
+                        "Doodle Spring"
+                    }
+                    .into(),
+                ));
+            }
         }
         true
     }
@@ -154,6 +195,14 @@ impl Studio {
                 assert!(self.qa_dock.companion.is_some());
             }
             "settings-project" => {
+                assert_eq!(
+                    self.project.name, "봄날의 낙서",
+                    "project name must remain editable"
+                );
+                assert_eq!(
+                    self.project.family, "Doodle Spring",
+                    "family must remain editable"
+                );
                 assert!(ctx.content_rect().contains_rect(
                     self.qa_settings
                         .project_name

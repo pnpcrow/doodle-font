@@ -1,4 +1,4 @@
-param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly, [switch]$FloatingOnly, [switch]$ExportOnly, [switch]$UsabilityOnly, [switch]$CompanionOnly, [switch]$SettingsOnly)
+param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly, [switch]$FloatingOnly, [switch]$ExportOnly, [switch]$UsabilityOnly, [switch]$CompanionOnly, [switch]$SettingsOnly, [switch]$LayoutOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
@@ -23,6 +23,9 @@ elseif (-not $ConnectionsOnly -and -not $FloatingOnly) { $views += $exportViews 
 if ($UsabilityOnly) { $views = @('theme-light','theme-light-small','theme-dark-small','appearance-write','appearance-restored','preview','templates','ai-busy') }
 if ($CompanionOnly) { $views = $rendererViews }
 if ($SettingsOnly) { $views = @('settings-off','settings-local','settings-api','settings-api-small','settings-api-expanded-small','settings-api-test','settings-api-error','settings-generation','settings-disable','settings-needle-auto','settings-local-auto','connections-write','connections-restored','connections-delete','connections-empty','settings-project','settings-dock-collapsed','settings-dock-transition') }
+$layoutViews = @('layout-project','layout-project-small','layout-tabs','layout-templates-light','layout-templates-dark-small','layout-sidebar','layout-sidebar-small','layout-sidebar-reduced','layout-companion-small')
+if ($LayoutOnly) { $views = $layoutViews }
+elseif (-not ($ConnectionsOnly -or $FloatingOnly -or $ExportOnly -or $UsabilityOnly -or $CompanionOnly -or $SettingsOnly)) { $views += $layoutViews }
 foreach ($viewName in $views) {
     $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-$viewName"
     if ($viewName.StartsWith('appearance-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-appearance" }
@@ -51,6 +54,7 @@ foreach ($viewName in $views) {
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
 Write-Output "Native UI QA passed: $($views.Count) scenarios."
+if ($LayoutOnly) { Write-Output 'Project typing, disk save, popup dismissal/reopen, tabs, fixed template cards, animated sidebars, reduced motion, and companion context menu passed.'; return }
 if ($SettingsOnly) { Write-Output 'Compact settings, API test success/error, separate generation window, disabled AI, isolated automatic installs, and saved credentials passed.'; return }
 if ($CompanionOnly) { Write-Output 'Side-by-side comparison, selection, process restart, switching back, and small-window bounds passed.'; return }
 if ($UsabilityOnly) { Write-Output 'Theme switching, preference restart, small windows, themed previews, and the busy companion passed.'; return }
