@@ -14,6 +14,9 @@ use std::{
     time::{Duration, Instant},
 };
 const DRAW_INK: Color32 = Color32::from_rgb(48, 51, 46);
+#[cfg(feature = "ui-qa")]
+#[path = "settings_qa.rs"]
+mod settings_qa;
 
 type JobResult = Result<Job, String>;
 
@@ -27,6 +30,8 @@ struct DockQa {
     prompt: Option<Rect>,
     prompt_offset: f32,
     collapse: Option<Rect>,
+    restore: Option<Rect>,
+    expanded: Option<Rect>,
     companion: Option<Rect>,
     companion_baseline: Option<Rect>,
     footer: Option<Rect>,
@@ -36,6 +41,7 @@ enum Job {
     Export(font::ExportResult, Option<PathBuf>),
     AiReply(String, bool, serde_json::Value),
     AiInstalled(doodle_core::ai_install::Package),
+    ConnectionTest(Result<(), String>),
     FontPreview(Vec<u8>, String),
     Imported(Project),
 }
@@ -103,12 +109,17 @@ pub struct Studio {
     connections_pending: Option<Instant>,
     connections_status: String,
     connections_error: bool,
+    connection_test_status: String,
+    connection_test_error: bool,
+    testing_connection: bool,
+    generation_test_open: bool,
     ai_prompt: String,
     send_reference: bool,
     ai_color: bool,
     ai_action: bool,
     ai_answer: String,
     ai_dock_collapsed: bool,
+    ai_dock_restore: Option<Rect>,
     candidate_review: Option<(String, String)>,
     ai_status: String,
     ai_started: Instant,
@@ -148,6 +159,16 @@ pub struct Studio {
     qa_ai_send: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_decision_button: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_ai_providers: HashMap<String, Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_connection_header: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_test_connection: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_generation_test: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_settings: settings_qa::State,
     #[cfg(feature = "ui-qa")]
     qa_api_key: Option<Rect>,
     #[cfg(feature = "ui-qa")]
@@ -266,12 +287,17 @@ impl Studio {
             connections_pending: None,
             connections_status,
             connections_error,
+            connection_test_status: String::new(),
+            connection_test_error: false,
+            testing_connection: false,
+            generation_test_open: false,
             ai_prompt: String::new(),
             send_reference: false,
             ai_color: true,
             ai_action: false,
             ai_answer: String::new(),
             ai_dock_collapsed: false,
+            ai_dock_restore: None,
             candidate_review: None,
             ai_status: String::new(),
             ai_started: Instant::now(),
@@ -312,6 +338,16 @@ impl Studio {
             qa_ai_send: None,
             #[cfg(feature = "ui-qa")]
             qa_decision_button: None,
+            #[cfg(feature = "ui-qa")]
+            qa_ai_providers: HashMap::new(),
+            #[cfg(feature = "ui-qa")]
+            qa_connection_header: None,
+            #[cfg(feature = "ui-qa")]
+            qa_test_connection: None,
+            #[cfg(feature = "ui-qa")]
+            qa_generation_test: None,
+            #[cfg(feature = "ui-qa")]
+            qa_settings: Default::default(),
             #[cfg(feature = "ui-qa")]
             qa_api_key: None,
             #[cfg(feature = "ui-qa")]
@@ -504,7 +540,8 @@ impl Studio {
                         self.local_installed = doodle_core::local_ai::installed();
                         self.needle_installed = doodle_core::needle::installed();
                     }
-                    let was_ai = self.ai_cancel.is_some() && !was_installing;
+                    let was_testing = std::mem::take(&mut self.testing_connection);
+                    let was_ai = self.ai_cancel.is_some() && !was_installing && !was_testing;
                     let cancelled = self
                         .ai_cancel
                         .take()
@@ -514,6 +551,11 @@ impl Studio {
                         self.companion
                             .motion
                             .react(doodle_core::companion::Mood::Idle);
+                        if was_testing {
+                            self.connection_test_status = "연결 테스트를 취소했어요.".into();
+                            self.connection_test_error = false;
+                            return;
+                        }
                         if was_installing {
                             self.install_error =
                                 "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다."
@@ -527,6 +569,18 @@ impl Studio {
                         return;
                     }
                     match result {
+                        Ok(Job::ConnectionTest(result)) => {
+                            self.connection_test_error = result.is_err();
+                            self.connection_test_status = match result {
+                                Ok(()) => "연결 성공 · 모델이 텍스트 요청에 응답했어요.".into(),
+                                Err(e) => e,
+                            };
+                            self.companion.motion.react(if self.connection_test_error {
+                                doodle_core::companion::Mood::NeedsHelp
+                            } else {
+                                doodle_core::companion::Mood::Done
+                            });
+                        }
                         Err(e) => {
                             self.companion
                                 .motion
@@ -844,6 +898,9 @@ impl Studio {
                             .clicked()
                         {
                             self.tab = i;
+                            if i == 3 {
+                                self.ai_dock_collapsed = true;
+                            }
                         }
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -858,7 +915,9 @@ impl Studio {
                         {
                             self.export_open = true;
                         }
-                        ui.menu_button("프로젝트", |ui| {
+                        let project_menu = ui.menu_button("프로젝트", |ui| {
+                            self.project_options_ui(ui);
+                            ui.separator();
                             if ui.button("프로젝트 사본 저장").clicked() {
                                 ui.close();
                                 self.save_copy();
@@ -872,6 +931,11 @@ impl Studio {
                                 self.fresh_project();
                             }
                         });
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_settings.project_menu = Some(project_menu.response.rect);
+                        }
+                        let _ = project_menu;
                         ui.menu_button("화면", |ui| self.appearance_options(ui));
                     });
                 });
@@ -920,6 +984,24 @@ impl Studio {
                             self.help = true;
                         }
                         ui.small("두들 폰트 0.1.0");
+                        if self.api_provider != "off" {
+                            let restore = ui.add_sized(
+                                [106., 20.],
+                                egui::Button::new(if self.ai_dock_collapsed {
+                                    "어시스트 열기 ↑"
+                                } else {
+                                    "어시스트 접기 ↓"
+                                }),
+                            );
+                            self.ai_dock_restore = Some(restore.rect);
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_dock.restore = Some(restore.rect);
+                            }
+                            if restore.clicked() {
+                                self.ai_dock_collapsed = !self.ai_dock_collapsed;
+                            }
+                        }
                         if self.job.is_some() || self.ai_cancel.is_some() {
                             let spinner = ui.add(egui::Spinner::new().size(14.));
                             #[cfg(feature = "ui-qa")]
@@ -2441,6 +2523,10 @@ impl Studio {
         if self.job.is_some() {
             return;
         }
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.installs += 1;
+        }
         self.install_error.clear();
         self.installing_ai = true;
         self.install_fraction = 0.;
@@ -2473,12 +2559,14 @@ impl Studio {
         });
     }
     fn ai_ready(&self) -> bool {
-        if self.api_provider == "local" {
-            self.local_installed
-        } else {
-            !self.api_model.trim().is_empty()
-                && !self.api_endpoint.trim().is_empty()
-                && !self.api_key.trim().is_empty()
+        match self.api_provider.as_str() {
+            "local" => self.local_installed,
+            "openai" | "anthropic" => {
+                !self.api_model.trim().is_empty()
+                    && !self.api_endpoint.trim().is_empty()
+                    && !self.api_key.trim().is_empty()
+            }
+            _ => false,
         }
     }
     fn start_ai(&mut self, ctx: &egui::Context, drawing: bool) {
@@ -2537,7 +2625,7 @@ impl Studio {
                 .motion
                 .react(doodle_core::companion::Mood::Idle);
         }
-        if self.export_open && self.ai_cancel.is_none() {
+        if (self.export_open || self.api_provider == "off") && self.ai_cancel.is_none() {
             return;
         }
 
@@ -2645,7 +2733,24 @@ impl Studio {
                 self.qa_dock.companion = Some(companion_rect);
             }
         } else {
-            let dock = area.show(ctx, |ui| {
+            let openness = ctx.animate_bool_with_time_and_easing(
+                egui::Id::new("ai-dock-openness"),
+                !self.ai_dock_collapsed,
+                if self.preferences.reduce_motion {
+                    0.
+                } else {
+                    0.28
+                },
+                egui::emath::easing::cubic_out,
+            );
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_dock.dock = None;
+            }
+            if openness > 0. {
+                let dock = area.show(ctx, |ui| {
+                if openness < 1. { ui.disable(); }
+                ui.multiply_opacity(openness);
                 frame.show(ui, |ui| {
                     ui.set_width(card_width);
                     ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
@@ -2668,11 +2773,7 @@ impl Studio {
                         ui.selectable_value(&mut self.ai_action, false, "그림 상담");
                         ui.selectable_value(&mut self.ai_action, true, "후보 만들기");
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let collapse = ui.button(if self.ai_dock_collapsed {
-                                "펼치기"
-                            } else {
-                                "접기"
-                            });
+                            let collapse = ui.button("접기");
                             #[cfg(feature = "ui-qa")]
                             {
                                 self.qa_dock.collapse = Some(collapse.rect);
@@ -2682,7 +2783,6 @@ impl Studio {
                             }
                         });
                     });
-                    if self.ai_dock_collapsed { return; }
                     if !self.ai_ready() {
                         ui.horizontal(|ui| {
                             ui.label("한 글자부터 가볍게 그려보세요. AI를 연결하면 두들이 도와드려요.");
@@ -2798,11 +2898,30 @@ impl Studio {
                     });
                 });
             });
-            #[cfg(feature = "ui-qa")]
-            {
-                self.qa_dock.dock = Some(dock.response.rect);
+                let target = self.ai_dock_restore.unwrap_or_else(|| {
+                    Rect::from_center_size(
+                        Pos2::new(view.center().x, view.bottom() - 16.),
+                        Vec2::new(106., 20.),
+                    )
+                });
+                let scale = egui::lerp(
+                    (target.width() / dock.response.rect.width())
+                        .min(target.height() / dock.response.rect.height())
+                        ..=1.,
+                    openness,
+                );
+                let center = target.center().lerp(dock.response.rect.center(), openness);
+                let transform = egui::emath::TSTransform {
+                    scaling: scale,
+                    translation: center.to_vec2() - dock.response.rect.center().to_vec2() * scale,
+                };
+                ctx.transform_layer_shapes(dock.response.layer_id, transform);
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_dock.dock = Some(transform * dock.response.rect);
+                }
+                let _ = dock;
             }
-            let _ = dock;
             egui::Area::new("ai-companion".into())
                 .anchor(Align2::CENTER_BOTTOM, companion_offset)
                 .order(egui::Order::Foreground)
@@ -2823,29 +2942,57 @@ impl Studio {
     fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
         use doodle_core::needle::Mode;
         let previous = self.decision_mode;
-        egui::Frame::new().fill(self.palette.raised).corner_radius(12).inner_margin(18).show(ui, |ui| {
-            ui.set_max_width(760.);
-            ui.label(RichText::new("입력 판단 AI · 공통 옵션").size(19.).strong());
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.decision_mode, Mode::Off, "사용 안 함");
-                let response = ui.selectable_value(&mut self.decision_mode, Mode::Needle, "Needle 3 · 시험 기능");
-                #[cfg(feature = "ui-qa")] { self.qa_decision_button = Some(response.rect); }
-                let _ = response;
-            });
-            ui.label("입력 → 판단 → 실행 전 확인 → 아래에서 선택한 내장 AI 또는 API");
-            if self.decision_mode == Mode::Needle {
-                ui.label("간단한 편집은 후보로 만들고, 불확실한 요청은 선택한 AI로 넘겨요. 한국어 판단 정확도는 제한적입니다.");
-                ui.label("판단한 작업에 맞춰 두들의 동작도 골라요. 사용하지 않아도 기본 동작은 계속됩니다.");
-                ui.horizontal(|ui| {
-                    chip(ui, if self.needle_installed { "판단 모델 설치 완료" } else { "판단 모델 설치 필요 · 약 37 MB" });
-                    if ui.add_enabled(self.job.is_none(), egui::Button::new(if self.needle_installed { "판단 모델 검증 · 복구" } else { "판단 모델 설치" })).clicked() {
+        let mut enabled = previous == Mode::Needle;
+        ui.horizontal_wrapped(|ui| {
+            let response = ui
+                .add_enabled(
+                    self.job.is_none(),
+                    egui::Checkbox::new(&mut enabled, "내장 판단 AI 사용"),
+                )
+                .on_hover_text("처음 켜면 판단 모델 약 37 MB를 자동으로 설치해요.");
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_decision_button = Some(response.rect);
+            }
+            let _ = response;
+            if enabled {
+                chip(
+                    ui,
+                    if self.needle_installed {
+                        "준비됨"
+                    } else {
+                        "설치 필요 · 37 MB"
+                    },
+                );
+                if !self.needle_installed
+                    && previous == Mode::Needle
+                    && ui
+                        .add_enabled(self.job.is_none(), egui::Button::new("설치 다시 시도"))
+                        .clicked()
+                {
+                    self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
+                }
+            } else {
+                chip(ui, "입력 보조 · 선택 사항");
+            }
+        });
+        self.decision_mode = if enabled { Mode::Needle } else { Mode::Off };
+        if enabled {
+            chip(
+                ui,
+                "간단한 편집을 먼저 판단해요. 한국어 정확도는 아직 제한적이에요.",
+            );
+            egui::CollapsingHeader::new("판단 AI 자세히")
+                .id_salt("decision-details")
+                .show(ui, |ui| {
+                    ui.label("Needle 3 · 시험 기능");
+                    ui.label("그림을 만드는 AI와 별개로, 내장 AI와 API 모두에 적용돼요. PC에서 입력한 텍스트만 확인합니다.");
+                    ui.label("설치되지 않았거나 판단이 불확실하면 선택한 AI가 그대로 처리해요. 판단 결과는 두들의 동작 선택에도 쓰입니다.");
+                    if self.needle_installed && ui.add_enabled(self.job.is_none(), egui::Button::new("판단 모델 검증 · 복구")).clicked() {
                         self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
                     }
                 });
-                ui.label(RichText::new("판단은 PC에서 텍스트만 읽어요. 설치되지 않았거나 실패하면 선택한 AI로 바로 넘깁니다.").size(12.).color(self.palette.muted));
-                if !self.install_error.is_empty() { ui.colored_label(self.palette.accent, &self.install_error); }
-            }
-        });
+        }
         if previous != self.decision_mode {
             let path = self.save_path.with_file_name("ai-options.json");
             if let Err(e) = (doodle_core::needle::Options {
@@ -2855,9 +3002,13 @@ impl Studio {
             {
                 self.notify(format!("판단 AI 설정을 저장하지 못했어요: {e}"));
             }
+            if enabled && !self.needle_installed {
+                self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
+            }
         }
     }
     fn connection_changed(&mut self) {
+        self.connection_test_status.clear();
         self.connections.remember(
             &self.api_provider,
             &self.api_endpoint,
@@ -2898,92 +3049,271 @@ impl Studio {
         self.api_model = profile.model;
         self.connection_changed();
     }
+    fn test_connection(&mut self, ctx: &egui::Context) {
+        if self.job.is_some()
+            || !self.ai_ready()
+            || !["openai", "anthropic"].contains(&self.api_provider.as_str())
+        {
+            return;
+        }
+        if self.connections_pending.is_some() {
+            self.save_connections();
+        }
+        self.connection_test_status = "연결 테스트 중…".into();
+        self.connection_test_error = false;
+        self.testing_connection = true;
+        self.ai_started = Instant::now();
+        self.ai_status = "API 연결을 확인하는 중".into();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.ai_cancel = Some(cancel.clone());
+        let config = serde_json::json!({"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key});
+        self.spawn(ctx, move || {
+            let result = (|| {
+                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|_| "연결 테스트를 시작하지 못했어요.")?;
+                runtime.block_on(async {
+                    let request = doodle_core::ai::test_connection(config);
+                    tokio::pin!(request);
+                    loop {
+                        tokio::select! {
+                            result = &mut request => return result,
+                            _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                                if cancel.load(std::sync::atomic::Ordering::Relaxed) { return Err("연결 테스트를 취소했어요.".into()); }
+                            }
+                        }
+                    }
+                })
+            })();
+            Ok(Job::ConnectionTest(result))
+        });
+    }
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         ui.heading("내 작업실 설정");
         self.appearance_options(ui);
         ui.add_space(16.);
         ui.separator();
         ui.add_space(12.);
-        ui.label(
-            RichText::new("필요할 때만, AI의 도움을.")
-                .size(28.)
-                .strong(),
-        );
-        ui.label(
-            RichText::new("직접 그리기·저장·복원·폰트 출력은 API 없이도 사용할 수 있어요.")
-                .color(self.palette.muted),
-        );
-        ui.add_space(24.);
-        self.decision_options_ui(ui);
-        ui.add_space(16.);
-        ui.label(RichText::new("그림 분석·생성 AI").size(20.).strong());
-        egui::Frame::new().fill(self.palette.surface).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{
-            for (provider, label) in [("local", "내장 로컬 AI"), ("openai", "OpenAI 호환"), ("anthropic", "Anthropic 호환")] {
-                if ui.selectable_label(self.api_provider == provider, label).clicked() { self.select_ai_provider(provider); }
-            }
-        });ui.add_space(16.);
-            if self.api_provider=="local" {
-                ui.label("Gemma 4 E2B · 그림 상담과 후보 생성");
-                chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"로컬 AI 설치가 필요해요"});
-                ui.label("최초 다운로드 약 3.4 GB · 설치 중에는 편집이 잠깁니다.");
-                ui.label(RichText::new(format!("설치 위치: {}",doodle_core::local_ai::root().display())).size(12.).color(self.palette.muted));
-                if !self.local_installed {let missing=doodle_core::ai_install::missing(&doodle_core::local_ai::root());ui.label(RichText::new(format!("확인이 필요한 파일: {}",missing.join(", "))).size(12.).color(self.palette.muted));}
-                ui.horizontal(|ui|{
-                    let button=ui.add_enabled(self.job.is_none(),egui::Button::new(if self.local_installed{"설치 파일 검증 · 복구"}else if self.install_error.is_empty(){"로컬 AI 설치"}else{"설치 다시 시도"}).fill(self.palette.selection));
-                    #[cfg(feature="ui-qa")] {self.qa_install_button=Some(button.rect);}
-                    if button.clicked(){self.install_ai(ui.ctx());}
-                    if ui.button("설치 상태 다시 확인").clicked(){self.local_installed=doodle_core::local_ai::installed();self.last_install_check=Instant::now();}
+        ui.label(RichText::new("AI 어시스트").size(20.).strong());
+        egui::Frame::new()
+            .fill(self.palette.raised)
+            .corner_radius(12)
+            .inner_margin(18)
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width().min(740.));
+                ui.label("그림 상담과 후보를 만들어 줄 AI");
+                ui.horizontal_wrapped(|ui| {
+                    for (provider, label) in [
+                        ("off", "사용 안 함"),
+                        ("local", "로컬 AI"),
+                        ("openai", "OpenAI 호환"),
+                        ("anthropic", "Anthropic 호환"),
+                    ] {
+                        let response = ui.selectable_label(self.api_provider == provider, label);
+                        #[cfg(feature="ui-qa")]
+                        { self.qa_ai_providers.insert(provider.into(), response.rect); }
+                        let response = if provider == "local" { response.on_hover_text("처음 선택하면 로컬 AI 약 3.4 GB를 자동으로 설치해요.") } else { response };
+                        if response.clicked() {
+                            let changed = self.api_provider != provider;
+                            self.select_ai_provider(provider);
+                            if changed && provider == "local" && !self.local_installed {
+                                self.install_ai(ui.ctx());
+                            }
+                        }
+                    }
                 });
-                if !self.install_error.is_empty(){ui.colored_label(self.palette.accent,&self.install_error);}
-                chip(ui,"필요할 때 Gemma 4를 읽고 작업이 끝나면 메모리를 반환합니다.");
-            } else {
-            let mut changed = false;
-            egui::Grid::new("api-info").num_columns(2).spacing([20.,16.]).show(ui,|ui|{
-                ui.label("API 기본 주소");
-                if ui.add(egui::TextEdit::singleline(&mut self.api_endpoint).desired_width(460.)).changed() {
-                    self.api_key = self.connections.key(&self.api_provider, &self.api_endpoint);
-                    changed = true;
+                ui.add_space(8.);
+                if self.api_provider == "off" {
+                    chip(ui, "AI 없이 직접 그리기와 폰트 내보내기를 사용할 수 있어요.");
+                } else if self.api_provider == "local" {
+                    ui.horizontal_wrapped(|ui| {
+                        chip(
+                            ui,
+                            if self.local_installed {
+                                "사용 준비 완료 · 인터넷 없이 사용해요"
+                            } else {
+                                "설치 필요 · 약 3.4 GB"
+                            },
+                        );
+                        if !self.local_installed {
+                            let button = ui.add_enabled(
+                                self.job.is_none(),
+                                egui::Button::new("설치 다시 시도").fill(self.palette.selection),
+                            );
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_install_button = Some(button.rect);
+                            }
+                            if button.clicked() {
+                                self.install_ai(ui.ctx());
+                            }
+                        }
+                    });
+                    egui::CollapsingHeader::new("모델 정보 · 설치 관리")
+                        .id_salt("local-ai-details")
+                        .show(ui, |ui| {
+                            ui.label("Gemma 4 E2B · 작업할 때만 읽고 끝나면 메모리를 반환해요.");
+                            ui.label(
+                                RichText::new(format!(
+                                    "설치 위치: {}",
+                                    doodle_core::local_ai::root().display()
+                                ))
+                                .size(12.)
+                                .color(self.palette.muted),
+                            );
+                            if !self.local_installed {
+                                let missing = doodle_core::ai_install::missing(
+                                    &doodle_core::local_ai::root(),
+                                );
+                                ui.label(format!("확인이 필요한 파일: {}", missing.join(", ")));
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                if self.local_installed
+                                    && ui
+                                        .add_enabled(
+                                            self.job.is_none(),
+                                            egui::Button::new("설치 파일 검증 · 복구"),
+                                        )
+                                        .clicked()
+                                {
+                                    self.install_ai(ui.ctx());
+                                }
+                                if ui.button("설치 상태 다시 확인").clicked() {
+                                    self.local_installed = doodle_core::local_ai::installed();
+                                    self.last_install_check = Instant::now();
+                                }
+                            });
+                        });
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        chip(ui, if self.ai_ready() { "연결 정보 입력됨" } else { "연결 설정 필요" });
+                        if !self.api_model.trim().is_empty() { ui.label(&self.api_model); }
+                    });
+                    let connection_header = egui::CollapsingHeader::new("연결 설정")
+                        .id_salt(("api-connection-settings", self.api_provider.clone()))
+                        .show(ui, |ui| {
+                    let mut changed = false;
+                    egui::Grid::new("api-info")
+                        .num_columns(2)
+                        .spacing([16., 8.])
+                        .show(ui, |ui| {
+                            ui.label("API 기본 주소");
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.api_endpoint)
+                                        .desired_width(460.),
+                                )
+                                .changed()
+                            {
+                                self.api_key =
+                                    self.connections.key(&self.api_provider, &self.api_endpoint);
+                                changed = true;
+                            }
+                            ui.end_row();
+                            ui.label("모델 이름");
+                            changed |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut self.api_model)
+                                        .hint_text("연결할 제공자의 정확한 모델 ID"),
+                                )
+                                .changed();
+                            ui.end_row();
+                            ui.label("API 키");
+                            let key_input = ui.add(
+                                egui::TextEdit::singleline(&mut self.api_key)
+                                    .password(true)
+                                    .hint_text("다음 실행에도 유지할 API 키"),
+                            );
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_api_key = Some(key_input.rect);
+                            }
+                            changed |= key_input.changed();
+                            ui.end_row();
+                        });
+                    if changed {
+                        self.connection_changed();
+                    }
+                    ui.add_space(4.);
+                    ui.horizontal(|ui| {
+                        if ui.button("연결 설정 저장").clicked() {
+                            self.connection_changed();
+                            self.save_connections();
+                        }
+                        let forget = ui.add_enabled(
+                            !self.api_key.is_empty(),
+                            egui::Button::new("저장된 키 삭제"),
+                        );
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_forget_key = Some(forget.rect);
+                        }
+                        if forget.clicked() {
+                            self.api_key.clear();
+                            self.connection_changed();
+                            self.save_connections();
+                        }
+                        let test = ui.add_enabled(self.job.is_none() && self.ai_ready(), egui::Button::new("연결 테스트"))
+                            .on_hover_text("그림 없이 짧은 텍스트 요청을 보내요. 제공자의 API 사용량이 발생할 수 있어요.");
+                        #[cfg(feature="ui-qa")] { self.qa_test_connection = Some(test.rect); }
+                        if test.clicked() { self.test_connection(ui.ctx()); }
+                    });
+                    chip(ui, "연결 정보는 이 PC에 암호화해 자동 저장해요.");
+                    });
+                    #[cfg(feature="ui-qa")] { self.qa_connection_header = Some(connection_header.header_response.rect); }
+                    let _ = connection_header;
                 }
-                ui.end_row();ui.label("모델 이름");
-                changed |= ui.add(egui::TextEdit::singleline(&mut self.api_model).hint_text("연결할 제공자의 정확한 모델 ID")).changed();
-                ui.end_row();ui.label("API 키");
-                let key_input = ui.add(egui::TextEdit::singleline(&mut self.api_key).password(true).hint_text("다음 실행에도 유지할 API 키"));
-                #[cfg(feature="ui-qa")] { self.qa_api_key = Some(key_input.rect); }
-                changed |= key_input.changed();
-                ui.end_row();
+                if !self.connections_status.is_empty() {
+                    ui.colored_label(
+                        if self.connections_error {
+                            self.palette.accent
+                        } else {
+                            self.palette.muted
+                        },
+                        &self.connections_status,
+                    );
+                }
+                if !self.connection_test_status.is_empty() {
+                    ui.colored_label(if self.connection_test_error { self.palette.accent } else { self.palette.muted }, &self.connection_test_status);
+                }
+                if self.api_provider != "off" { ui.horizontal_wrapped(|ui| {
+                    ui.checkbox(&mut self.ai_color, "컬러 그림 제안");
+                    if self.api_provider != "local" {
+                        ui.checkbox(&mut self.send_reference, "현재 그림을 API에 함께 전송")
+                            .on_hover_text("선택한 글리프의 드로잉 영역 이미지와 벡터를 전송해요.");
+                    }
+                }); }
+                ui.separator();
+                self.decision_options_ui(ui);
+                if !self.install_error.is_empty() {
+                    ui.colored_label(self.palette.accent, &self.install_error);
+                }
+                if self.api_provider != "off" {
+                    ui.separator();
+                    let test = ui.add_enabled(self.ai_ready(), egui::Button::new("생성 테스트…"));
+                    #[cfg(feature="ui-qa")] { self.qa_generation_test = Some(test.rect); }
+                    if test.clicked() { self.generation_test_open = true; self.ai_dock_collapsed = true; }
+                }
             });
-            if changed { self.connection_changed(); }
-            ui.add_space(12.);
-            ui.horizontal(|ui| {
-                if ui.button("연결 설정 저장").clicked() { self.connection_changed(); self.save_connections(); }
-                let forget = ui.add_enabled(!self.api_key.is_empty(), egui::Button::new("이 주소의 키 삭제"));
-                #[cfg(feature="ui-qa")] { self.qa_forget_key = Some(forget.rect); }
-                if forget.clicked() { self.api_key.clear(); self.connection_changed(); self.save_connections(); }
-            });
-            chip(ui,"자동 저장 · 비밀번호·지문 입력 없이 다음 실행에 복원합니다.");
-            ui.label(RichText::new("키는 Windows 계정으로 암호화하며 제공자·주소별로 보관해요. 프로젝트에는 포함하지 않습니다.").size(12.).color(self.palette.muted));
-            }
-            if !self.connections_status.is_empty() {
-                ui.colored_label(if self.connections_error { self.palette.accent } else { self.palette.muted }, &self.connections_status);
-            }
-            ui.add_space(20.);ui.label("원하는 그림 스타일");ui.add(egui::TextEdit::multiline(&mut self.ai_prompt).desired_width(680.).desired_rows(3));ui.checkbox(&mut self.ai_color,"컬러 그림 제안");ui.checkbox(&mut self.send_reference,"현재 드로잉 영역의 PNG 이미지와 벡터를 API에 전송");chip(ui,"로컬 AI는 그림을 PC에서 읽습니다. API에서는 체크한 경우에만 그림을 전송합니다.");ui.add_space(18.);if ui.add_enabled(self.job.is_none(),egui::Button::new("선택한 글리프의 후보 생성").fill(self.palette.selection)).clicked(){self.generate_ai(ui.ctx());}ui.add_space(8.);ui.label(RichText::new("후보는 검토 후 직접 채택합니다. 잠금·의도적 빈칸·제어 문자는 보호됩니다.").size(12.).color(self.palette.muted));
-        });
-        ui.add_space(22.);
-        ui.label(RichText::new("프로젝트").size(20.).strong());
+    }
+    fn project_options_ui(&mut self, ui: &mut egui::Ui) {
+        ui.set_max_width(340.);
+        ui.strong("프로젝트 정보");
         let mut name = self.project.name.clone();
         let mut family = self.project.family.clone();
-        ui.horizontal(|ui| {
-            ui.label("이름");
-            if ui.text_edit_singleline(&mut name).changed() {
-                self.project.name = name;
-                self.changed();
-            }
-            ui.label("폰트 패밀리");
-            if ui.text_edit_singleline(&mut family).changed() {
-                self.project.family = family;
-                self.changed();
-            }
-        });
+        ui.label("프로젝트 이름");
+        let name_input = ui.text_edit_singleline(&mut name);
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.project_name = Some(name_input.rect);
+        }
+        if name_input.changed() {
+            self.project.name = name;
+            self.changed();
+        }
+        ui.label("폰트 패밀리");
+        if ui.text_edit_singleline(&mut family).changed() {
+            self.project.family = family;
+            self.changed();
+        }
         ui.add_space(10.);
         chip(ui, &format!("자동 저장 위치: {}", self.save_path.display()));
         if self.save_error && ui.button("자동 저장 다시 시도").clicked() {
@@ -3013,6 +3343,48 @@ impl Studio {
         }
         if self.ai_cancel.is_some() {
             return;
+        }
+        if self.generation_test_open {
+            let mut open = true;
+            let mut generated = false;
+            egui::Window::new("생성 테스트")
+                .open(&mut open)
+                .default_width(520.)
+                .default_pos(ctx.content_rect().center() - Vec2::new(270., 140.))
+                .resizable(false)
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    if let Some(glyph) = self.project.glyphs.get(self.selected) {
+                        ui.label(format!(
+                            "선택한 글자: {} · {}",
+                            display(&glyph.text),
+                            codepoints(&glyph.text)
+                        ));
+                    }
+                    ui.label("원하는 그림 스타일을 입력해 주세요.");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.ai_prompt)
+                            .desired_width(f32::INFINITY)
+                            .desired_rows(4),
+                    );
+                    if ui
+                        .add_enabled(
+                            self.job.is_none()
+                                && self.ai_ready()
+                                && !self.ai_prompt.trim().is_empty(),
+                            egui::Button::new("후보 생성").fill(self.palette.selection),
+                        )
+                        .clicked()
+                    {
+                        self.generate_ai(ctx);
+                        generated = self.job.is_some();
+                    }
+                    chip(
+                        ui,
+                        "현재 글자에 바로 적용하지 않고, 후보를 만든 뒤 비교해요.",
+                    );
+                });
+            self.generation_test_open = open && !generated;
         }
         if self.variant_open {
             let mut open = true;
@@ -3345,6 +3717,9 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if self.settings_qa_input(ctx, input, &qa_view) {
+            return;
+        }
         if qa_view.starts_with("renderer-") {
             input
                 .events
@@ -3413,6 +3788,7 @@ impl eframe::App for Studio {
                 .events
                 .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
             let frame = ctx.cumulative_frame_nr();
+            input.time = Some(frame as f64 / 30.);
             if (7..=9).contains(&frame) {
                 let rect = self.qa_dock.companion.expect("separate companion");
                 let pos = rect.center() + Vec2::new(if frame == 7 { -12. } else { 12. }, 0.);
@@ -3460,18 +3836,37 @@ impl eframe::App for Studio {
                     });
                 }
             }
-            if let Some(rect) = self
-                .qa_dock
-                .collapse
-                .filter(|_| [26, 27, 32, 33].contains(&frame))
+            if let Some(rect) = (if frame >= 48 {
+                self.qa_dock.restore
+            } else {
+                self.qa_dock.collapse
+            })
+            .filter(|_| [26, 27, 48, 49].contains(&frame))
             {
                 input.events.push(egui::Event::PointerMoved(rect.center()));
                 input.events.push(egui::Event::PointerButton {
                     pos: rect.center(),
                     button: egui::PointerButton::Primary,
-                    pressed: frame == 26 || frame == 32,
+                    pressed: frame == 26 || frame == 48,
                     modifiers: Default::default(),
                 });
+            }
+            if (40..=42).contains(&frame) {
+                let rect = self
+                    .qa_dock
+                    .expanded
+                    .unwrap()
+                    .intersect(self.qa_canvas.unwrap());
+                let pos = rect.center() + Vec2::new(if frame == 40 { -12. } else { 12. }, 0.);
+                input.events.push(egui::Event::PointerMoved(pos));
+                if frame != 41 {
+                    input.events.push(egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 40,
+                        modifiers: Default::default(),
+                    });
+                }
             }
             return;
         }
@@ -3480,22 +3875,27 @@ impl eframe::App for Studio {
                 .events
                 .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
             let frame = ctx.cumulative_frame_nr();
-            let rect = match qa_view.as_str() {
-                "connections-write" => self.qa_api_key,
-                "connections-delete" => self.qa_forget_key,
-                _ => None,
+            input.time = Some(frame as f64 / 30.);
+            let rect = if frame == 3 || frame == 4 {
+                self.qa_connection_header
+            } else {
+                match qa_view.as_str() {
+                    "connections-write" => self.qa_api_key,
+                    "connections-delete" => self.qa_forget_key,
+                    _ => None,
+                }
             };
-            if let Some(rect) = rect.filter(|_| frame == 3 || frame == 4) {
+            if let Some(rect) = rect.filter(|_| [3, 4, 12, 13].contains(&frame)) {
                 let pos = rect.center();
                 input.events.push(egui::Event::PointerMoved(pos));
                 input.events.push(egui::Event::PointerButton {
                     pos,
                     button: egui::PointerButton::Primary,
-                    pressed: frame == 3,
+                    pressed: frame == 3 || frame == 12,
                     modifiers: Default::default(),
                 });
             }
-            if qa_view == "connections-write" && frame == 5 {
+            if qa_view == "connections-write" && frame == 14 {
                 input
                     .events
                     .push(egui::Event::Text("qa-persistence-key-only".into()));
@@ -3605,6 +4005,11 @@ impl eframe::App for Studio {
         #[cfg(feature = "ui-qa")]
         if let Ok(output) = std::env::var("DOODLE_QA_OUTPUT") {
             if ctx.cumulative_frame_nr() == 0 {
+                let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+                if !qa_view.starts_with("settings") && self.api_provider == "off" {
+                    self.api_provider = "local".into();
+                }
+                self.settings_qa_setup(ctx, &qa_view);
                 match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
                     "renderer-write"
                     | "renderer-restored"
@@ -3656,7 +4061,10 @@ impl eframe::App for Studio {
                     }
                     "preview" => self.tab = 1,
                     "templates" => self.tab = 2,
-                    "settings" => self.tab = 3,
+                    "settings" => {
+                        self.tab = 3;
+                        self.ai_dock_collapsed = true;
+                    }
                     "install-flow" | "install-missing" => self.tab = 3,
                     "ai-ready" => {
                         self.local_installed = true;
@@ -3714,9 +4122,10 @@ impl eframe::App for Studio {
                         self.api_endpoint = "https://api.anthropic.com/v1".into();
                         self.decision_mode = doodle_core::needle::Mode::Off;
                     }
-                    "ai-floating" | "ai-floating-small" => {
+                    "ai-floating" | "ai-floating-small" | "ai-floating-reduced" => {
                         self.tab = 0;
                         self.local_installed = false;
+                        self.preferences.reduce_motion = qa_view.ends_with("reduced");
                         if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-floating-small") {
                             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
                                 1120., 760.,
@@ -3871,6 +4280,9 @@ impl eframe::App for Studio {
                     }
                     _ => {}
                 }
+                if qa_view.ends_with("-live") {
+                    self.tab = 0;
+                }
             }
             ctx.request_repaint();
             if std::env::var("DOODLE_QA_VIEW")
@@ -3911,16 +4323,40 @@ impl eframe::App for Studio {
                     );
                     assert!(self.qa_dock.dock.unwrap().height() < 340.);
                 }
-                if frame == 30 {
+                if frame == 24 {
+                    self.qa_dock.expanded = self.qa_dock.dock;
+                }
+                if frame == 32 && !self.preferences.reduce_motion {
+                    let dock = self.qa_dock.dock.unwrap();
+                    assert!(
+                        dock.height() > 1.
+                            && dock.height() < self.qa_dock.expanded.unwrap().height()
+                    );
+                }
+                if frame == 44 {
                     assert!(self.ai_dock_collapsed);
-                    assert!(self.qa_dock.dock.unwrap().height() < 100.);
+                    assert!(
+                        self.qa_dock.dock.is_none(),
+                        "collapsed dock must leave no overlay"
+                    );
+                    assert!(self
+                        .qa_dock
+                        .footer
+                        .unwrap()
+                        .contains_rect(self.qa_dock.restore.unwrap()));
+                    assert_eq!(
+                        self.project.glyphs[0].artwork.shapes.len(),
+                        3,
+                        "collapsed area must allow drawing underneath"
+                    );
+                    self.undo(false);
                     assert_eq!(self.qa_canvas, self.qa_dock.baseline);
                     assert_eq!(
                         self.qa_dock.companion, self.qa_dock.companion_baseline,
                         "Collapsing the prompt must not shrink or move the companion"
                     );
                 }
-                if frame == 36 {
+                if frame == 62 {
                     assert!(!self.ai_dock_collapsed);
                     assert!(self.qa_dock.dock.unwrap().height() < 340.);
                     assert_eq!(self.qa_canvas, self.qa_dock.baseline);
@@ -4180,7 +4616,7 @@ impl eframe::App for Studio {
                     .contains(if format == "otf" { "CFF " } else { "glyf" }));
             }
             let connection_ready = connection_flow
-                && ctx.cumulative_frame_nr() >= 12
+                && ctx.cumulative_frame_nr() >= 24
                 && self.connections_pending.is_none();
             if connection_flow && self.ai_started.elapsed() > Duration::from_secs(15) {
                 panic!("Connection persistence UI timed out");
@@ -4203,13 +4639,15 @@ impl eframe::App for Studio {
                     .contains("qa-persistence-key-only"));
             }
             if (ctx.cumulative_frame_nr() == 12
+                && !connection_view.starts_with("settings-")
                 && !install_flow
                 && !candidate_live
                 && !connection_flow
                 && !export_flow
                 && !floating_flow)
+                || self.settings_qa_ready(ctx, &connection_view)
                 || export_ready
-                || (floating_flow && ctx.cumulative_frame_nr() == 36)
+                || (floating_flow && ctx.cumulative_frame_nr() == 62)
                 || connection_ready
                 || (candidate_live
                     && ctx.cumulative_frame_nr() > 12
@@ -4326,10 +4764,12 @@ impl eframe::App for Studio {
         if ctx.cumulative_frame_nr() == 12 {
             if let (Some(companion), Some(dock)) = (self.qa_dock.companion, self.qa_dock.dock) {
                 assert!(companion.width() >= 159. && companion.height() >= 159.);
-                assert!(
-                    dock.right() + 8. <= companion.left(),
-                    "companion must be beside the prompt"
-                );
+                if !self.ai_dock_collapsed {
+                    assert!(
+                        dock.right() + 8. <= companion.left(),
+                        "companion must be beside the expanded prompt"
+                    );
+                }
                 assert!(ctx.content_rect().contains_rect(companion));
                 assert!(
                     ctx.content_rect().contains_rect(dock),

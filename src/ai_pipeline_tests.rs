@@ -18,6 +18,21 @@ fn candidate(p: &Value, r: &Value) -> Option<Value> {
     plan(p, &g, Some(r)).candidate
 }
 #[test]
+fn disabled_generation_never_calls_the_decision_model_or_provider() {
+    let (tx, rx) = mpsc::channel();
+    let result = run_using(
+        payload("off"),
+        Arc::new(AtomicBool::new(false)),
+        tx,
+        |_, _| {
+            panic!("AI disabled must skip Needle too");
+        },
+    );
+    assert!(result.unwrap_err().contains("꺼져"));
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
 fn common_quick_candidate_preserves_geometry_provenance_and_never_calls_provider() {
     for provider in ["local", "openai", "anthropic"] {
         let mut p = payload(provider);

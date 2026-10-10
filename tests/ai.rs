@@ -56,6 +56,48 @@ fn run(v: Value) -> Result<doodle_core::model::Artwork, String> {
         .block_on(ai::generate(v))
 }
 #[test]
+fn connection_probe_uses_both_provider_contracts_without_project_data() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for provider in ["openai", "anthropic"] {
+        let (url, rx) = mock(provider, "OK");
+        runtime
+            .block_on(ai::test_connection(
+                json!({"provider":provider,"endpoint":url,"model":"test-model","key":"test-key"}),
+            ))
+            .unwrap();
+        let request = rx.recv().unwrap();
+        assert!(request.contains(if provider == "openai" {
+            "/chat/completions"
+        } else {
+            "/messages"
+        }));
+        assert!(request.to_lowercase().contains(if provider == "openai" {
+            "authorization: bearer test-key"
+        } else {
+            "x-api-key: test-key"
+        }));
+        let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(
+            body["messages"],
+            json!([{"role":"user","content":"Reply with OK."}])
+        );
+        assert_eq!(body["max_tokens"], 32);
+        assert_eq!(body["model"], "test-model");
+        assert!(!request.contains("image"));
+        let (url, _rx) = mock(provider, "");
+        assert!(runtime
+            .block_on(ai::test_connection(
+                json!({"provider":provider,"endpoint":url,"model":"test-model","key":"test-key"})
+            ))
+            .is_err());
+    }
+    assert!(runtime.block_on(ai::test_connection(json!({"provider":"openai","endpoint":"https://example.invalid/v1","model":"test-model","key":""}))).is_err());
+}
+
+#[test]
 fn both_provider_contracts_preserve_exact_target() {
     for provider in ["openai", "anthropic"] {
         let answer=json!({"advance":1000,"shapes":[{"type":"path","points":[[100,800],[500,100],[900,800]]}]}).to_string();

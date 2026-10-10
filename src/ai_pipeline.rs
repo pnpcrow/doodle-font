@@ -28,6 +28,10 @@ fn run_using(
     status: Sender<Progress>,
     decide: impl FnOnce(&str, Arc<AtomicBool>) -> Result<Value, String>,
 ) -> Result<Value, String> {
+    check(
+        payload["config"]["provider"] != "off",
+        "AI 사용이 꺼져 있어요.",
+    )?;
     let mode = match payload.get("decision") {
         Some(v) => serde_json::from_value::<Mode>(v.clone())
             .map_err(|_| "판단 AI 옵션을 확인해 주세요.")?,

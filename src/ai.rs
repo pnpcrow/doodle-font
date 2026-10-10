@@ -53,15 +53,31 @@ pub async fn assist(payload: Value) -> Result<String, String> {
     let g = validate_target(&payload, false)?;
     let layout = crate::glyph_layout::context(&g);
     let prompt=format!("You are Doodle Font's font drawing assistant. Reply in Korean, concise and specific. Explain what you see and suggest changes relevant to the user's request. The pale horizontal/vertical lines are editing guides, not part of the glyph. If an image is attached, its 512 pixels represent 1000 font units, not 512 font units. Keep cap height, lowercase proportions and descenders distinct; do not move a descender above the baseline. Do not claim to have edited anything. Layout: {layout}. Glyph: {}, locale: {}, codepoints: {:?}. User request: {}",g.text,g.locale,g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),payload["prompt"].as_str().unwrap_or(""));
-    request(&payload, &g, &prompt, false, None).await
+    request(&payload, Some(&g), &prompt, false, None).await
+}
+/// Probe the same text API as normal requests, without any project or drawing data.
+pub async fn test_connection(config: Value) -> Result<(), String> {
+    if config["key"].as_str().unwrap_or("").trim().is_empty() {
+        return Err("API 키를 입력해 주세요.".into());
+    }
+    request(
+        &json!({"config":config}),
+        None,
+        "Reply with OK.",
+        false,
+        None,
+    )
+    .await
+    .map(|_| ())
 }
 async fn request(
     payload: &Value,
-    g: &Glyph,
+    g: Option<&Glyph>,
     prompt: &str,
     drawing: bool,
     schema: Option<Value>,
 ) -> Result<String, String> {
+    let testing = g.is_none();
     let config = &payload["config"];
     let endpoint = config["endpoint"]
         .as_str()
@@ -85,7 +101,7 @@ async fn request(
         return Err("API 방식과 모델 이름을 입력해 주세요.".into());
     }
     let picture = if payload["sendReference"] == true {
-        Some(canvas_image(&g.artwork)?)
+        Some(canvas_image(&g.ok_or("그림 정보가 없어요.")?.artwork)?)
     } else {
         None
     };
@@ -99,7 +115,9 @@ async fn request(
         json!(prompt)
     };
     let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(if config["local"] == true {
+        .timeout(std::time::Duration::from_secs(if testing {
+            20
+        } else if config["local"] == true {
             300
         } else {
             90
@@ -109,9 +127,12 @@ async fn request(
         .build()
         .map_err(|e| e.to_string())?;
     let request = if provider == "anthropic" {
-        client.post(format!("{endpoint}/messages")).header("x-api-key",key).header("anthropic-version","2023-06-01").json(&json!({"model":model,"max_tokens":4096,"messages":[{"role":"user","content":content}]}))
+        client.post(format!("{endpoint}/messages")).header("x-api-key",key).header("anthropic-version","2023-06-01").json(&json!({"model":model,"max_tokens":if testing {32} else {4096},"messages":[{"role":"user","content":content}]}))
     } else {
-        let mut body = json!({"model":model,"max_tokens":if schema.is_some() {512} else if drawing {4096} else {768},"temperature":0.3,"messages":[{"role":"user","content":content}]});
+        let mut body = json!({"model":model,"max_tokens":if testing {32} else if schema.is_some() {512} else if drawing {4096} else {768},"temperature":0.3,"messages":[{"role":"user","content":content}]});
+        if testing {
+            body.as_object_mut().unwrap().remove("temperature");
+        }
         if config["local"] == true {
             body["chat_template_kwargs"] = json!({"enable_thinking":false});
             if let Some(schema) = schema {
@@ -154,12 +175,16 @@ async fn request(
     let result: Value =
         serde_json::from_slice(&bytes).map_err(|_| "AI 응답이 JSON 형식이 아니에요.")?;
     if provider == "anthropic" {
-        Ok(result["content"]
+        let text: String = result["content"]
             .as_array()
             .ok_or("AI 응답이 비어 있어요.")?
             .iter()
             .filter_map(|c| c["text"].as_str())
-            .collect())
+            .collect();
+        if text.trim().is_empty() {
+            return Err("AI 응답이 비어 있어요.".into());
+        }
+        Ok(text)
     } else {
         result["choices"][0]["message"]["content"]
             .as_str()
@@ -179,7 +204,7 @@ pub async fn generate(payload: Value) -> Result<Artwork, String> {
     };
     let context = json!({"exactText":g.text,"codepoints":g.text.chars().map(|c|format!("U+{:04X}",c as u32)).collect::<Vec<_>>(),"locale":g.locale,"colorMode":payload["colorMode"],"style":payload["prompt"],"reference":reference,"layout":crate::glyph_layout::context(&g),"protected":"Preserve text mapping, template original, baseline and all other variants."});
     let prompt=format!("Create a vector drawing of the exact target glyph, matching the reference image and the user's style instruction. Return JSON only with numeric advance and an array shapes. Each shape must have type (path, rect or ellipse), color (#RRGGBB), stroke (numeric width), fill (boolean), opacity (0..1). Paths have points: an array of numeric [x,y] pairs. Rectangles and ellipses have x,y,width,height (bounding box, not center or radii). Follow the supplied layout in font units, not image pixels. Baseline y=800 is the bottom of the main letter body, NOT the bottom of every glyph: g/j/p/q/y need strokes below y=800. Capital tops are near y=200; lowercase bodies stay smaller and keep their x-height. The y=500 midline is only a visual reference. Preserve natural overshoot, accents and punctuation position. Before drawing, use layout.naturalReference as an approximate size and aspect-ratio starting point for this exact text, then adapt the style. The 1000-unit canvas is NOT the letter bounding box. For new letters balance the visible ink horizontally around layout.spacing.centerX in the existing advance. Left and right ink limits are minimum margins, NOT target endpoints: leave generous natural whitespace instead of touching both limits. Never anchor all letters to the left limit. Do not stretch, compress, or independently normalize width and height to fill the area; I/l/i stay narrow, M/W stay wide, and lowercase/punctuation stay naturally smaller. Choose the main body height from the cap/x-height guides, then let the letter design determine its width. Measure the actual visible ink including half the stroke at path edges. Do not vertically center or shrink a descender onto the baseline. Keep the existing advance unchanged. Check proportions, balanced side margins and baseline before returning JSON. For requested existing-art edits or explicit positioning, preserve that placement. Pale guide lines in the reference are NOT glyph strokes; never trace them. Use at most 12 simple shapes and 100 points per path. No prose, code, SVG or nested JSON strings. Draw the requested glyph, not a generic letter or demonstration. Context: {context}");
-    let answer = request(&payload, &g, &prompt, true, None).await?;
+    let answer = request(&payload, Some(&g), &prompt, true, None).await?;
     let cleaned = answer
         .trim()
         .trim_start_matches("```json")
@@ -267,7 +292,7 @@ The deterministic engine balances fresh glyphs horizontally within the advance w
     );
     let answer = request(
         &payload,
-        &glyph,
+        Some(&glyph),
         &prompt,
         true,
         Some(crate::typography::schema()),

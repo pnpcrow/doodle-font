@@ -19,7 +19,7 @@ impl Drop for Fixture {
 fn windows_encryption_survives_reload_without_plaintext_files() {
     let fixture = Fixture::new();
     let mut connections = Connections::load(&fixture.path()).unwrap();
-    assert_eq!(connections.provider, "local");
+    assert_eq!(connections.provider, "off");
     connections.remember(
         "openai",
         "https://example.invalid/v1",
@@ -69,6 +69,27 @@ fn keys_are_scoped_to_provider_and_endpoint_and_can_be_removed() {
     let restored = Connections::load(&fixture.path()).unwrap();
     assert!(restored.key("openai", "https://two.invalid/v1").is_empty());
     assert_eq!(restored.key("anthropic", "https://one.invalid/v1"), "key-c");
+}
+
+#[test]
+fn disabled_selection_survives_restart_and_preserves_saved_connections() {
+    let fixture = Fixture::new();
+    let mut connections = Connections::default();
+    connections.remember(
+        "openai",
+        "https://example.invalid/v1",
+        "saved-model",
+        "saved-key",
+    );
+    connections.remember("off", "", "", "");
+    connections.save(&fixture.path()).unwrap();
+    let restored = Connections::load(&fixture.path()).unwrap();
+    assert_eq!(restored.provider, "off");
+    assert_eq!(restored.profile("openai").model, "saved-model");
+    assert_eq!(
+        restored.key("openai", "https://example.invalid/v1"),
+        "saved-key"
+    );
 }
 
 #[test]

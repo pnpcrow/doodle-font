@@ -21,7 +21,7 @@ pub struct Connections {
 impl Default for Connections {
     fn default() -> Self {
         Self {
-            provider: "local".into(),
+            provider: "off".into(),
             profiles: [
                 ("openai", "https://api.openai.com/v1"),
                 ("anthropic", "https://api.anthropic.com/v1"),
@@ -95,7 +95,7 @@ impl Connections {
         // Never include a serde error: it may quote a credential from a bad file.
         let settings: Self = serde_json::from_slice(&plaintext)
             .map_err(|_| "AI 연결 설정 형식이 맞지 않아요. 기존 파일은 보존합니다.".to_string())?;
-        if !["local", "openai", "anthropic"].contains(&settings.provider.as_str()) {
+        if !["off", "local", "openai", "anthropic"].contains(&settings.provider.as_str()) {
             return Err("저장된 AI 제공자를 확인할 수 없어요.".into());
         }
         Ok(settings)
