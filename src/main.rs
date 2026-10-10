@@ -7,6 +7,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("두들 폰트 · Doodle Font")
+            .with_decorations(false)
             .with_inner_size([1480., 940.])
             .with_icon(eframe::egui::IconData {
                 width: icon.width(),

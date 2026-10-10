@@ -151,6 +151,8 @@ pub struct Studio {
     #[cfg(feature = "ui-qa")]
     qa_canvas: Option<Rect>,
     #[cfg(feature = "ui-qa")]
+    qa_chrome: Option<doodle_core::window_chrome::ChromeRects>,
+    #[cfg(feature = "ui-qa")]
     qa_themes: [Option<Rect>; 3],
     #[cfg(feature = "ui-qa")]
     qa_renderers: [Option<Rect>; 3],
@@ -329,6 +331,8 @@ impl Studio {
             variant_targets: Default::default(),
             #[cfg(feature = "ui-qa")]
             qa_canvas: None,
+            #[cfg(feature = "ui-qa")]
+            qa_chrome: None,
             #[cfg(feature = "ui-qa")]
             qa_themes: [None; 3],
             #[cfg(feature = "ui-qa")]
@@ -885,122 +889,82 @@ impl Studio {
             self.qa_renderers = [None; 3];
         }
         egui::TopBottomPanel::top("top")
-            .exact_height(100.)
-            .frame(
-                egui::Frame::new()
-                    .fill(self.palette.surface)
-                    .inner_margin(egui::Margin::symmetric(20, 8)),
-            )
+            .exact_height(doodle_core::window_chrome::TITLE_HEIGHT + 44.)
+            .frame(egui::Frame::new().fill(self.palette.surface))
             .show(ctx, |ui| {
-                if self.ai_cancel.is_some() {
-                    ui.disable();
-                }
-                ui.horizontal(|ui| {
-                    let (logo, _) = ui.allocate_exact_size(Vec2::splat(36.), Sense::hover());
-                    ui.painter()
-                        .rect_filled(logo, 11., Color32::from_rgb(190, 83, 51));
-                    ui.painter().text(
-                        logo.center(),
-                        Align2::CENTER_CENTER,
-                        "d",
-                        FontId::proportional(30.),
-                        Color32::WHITE,
-                    );
-                    ui.label(RichText::new("Doodle Font").size(19.).strong());
-                    ui.add_space(12.);
-                    ui.separator();
-                    let info_width = (ui.available_width() - 300.).max(120.);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(info_width, 40.),
-                        egui::Layout::top_down(egui::Align::Min),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.y = 2.;
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(&self.project.name).size(15.).strong(),
-                                )
-                                .truncate(),
-                            )
-                            .on_hover_text(format!("프로젝트: {}", self.project.name));
-                            ui.add(
-                                egui::Label::new(
-                                    RichText::new(format!("폰트 패밀리 · {}", self.project.family))
-                                        .size(11.)
-                                        .color(self.palette.muted),
-                                )
-                                .truncate(),
-                            )
-                            .on_hover_text(&self.project.family);
-                            #[cfg(feature = "ui-qa")]
+                // The native caption is painted above modals after the document UI.
+                ui.add_space(doodle_core::window_chrome::TITLE_HEIGHT);
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(20, 4))
+                    .show(ui, |ui| {
+                        if self.ai_cancel.is_some() {
+                            ui.disable();
+                        }
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 12.;
+                            for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
+                                .iter()
+                                .enumerate()
                             {
-                                self.qa_settings.project_heading = Some((
-                                    ui.min_rect(),
-                                    self.project.name.clone(),
-                                    self.project.family.clone(),
-                                ));
+                                let tab = navigation_tab(ui, label, self.tab == i, self.palette);
+                                #[cfg(feature = "ui-qa")]
+                                {
+                                    self.qa_settings.tabs[i] = Some(tab.rect);
+                                }
+                                if tab.clicked() {
+                                    self.tab = i;
+                                    if i == 3 {
+                                        self.ai_dock_collapsed = true;
+                                    }
+                                }
                             }
-                        },
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .add(
-                                egui::Button::new(
-                                    RichText::new("폰트 내보내기 ↗").color(Color32::WHITE),
-                                )
-                                .fill(Color32::from_rgb(190, 83, 51)),
-                            )
-                            .clicked()
-                        {
-                            self.export_open = true;
-                        }
-                        let project_menu = ui.button("프로젝트");
-                        egui::Popup::from_toggle_button_response(&project_menu)
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .width(340.)
-                            .show(|ui| {
-                                self.project_options_ui(ui);
-                                ui.separator();
-                                if ui.button("프로젝트 사본 저장").clicked() {
-                                    ui.close();
-                                    self.save_copy();
-                                }
-                                if ui.button("열기…").clicked() {
-                                    ui.close();
-                                    self.open_project(ctx);
-                                }
-                                if ui.button("새 프로젝트").clicked() {
-                                    ui.close();
-                                    self.fresh_project();
-                                }
-                            });
-                        #[cfg(feature = "ui-qa")]
-                        {
-                            self.qa_settings.project_menu = Some(project_menu.rect);
-                        }
-                        let _ = project_menu;
-                        ui.menu_button("화면", |ui| self.appearance_options(ui));
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                RichText::new("폰트 내보내기 ↗")
+                                                    .color(Color32::WHITE),
+                                            )
+                                            .fill(Color32::from_rgb(190, 83, 51)),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.export_open = true;
+                                    }
+                                    let project_menu = ui.button("프로젝트");
+                                    egui::Popup::from_toggle_button_response(&project_menu)
+                                        .close_behavior(
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                        )
+                                        .width(340.)
+                                        .show(|ui| {
+                                            self.project_options_ui(ui);
+                                            ui.separator();
+                                            if ui.button("프로젝트 사본 저장").clicked() {
+                                                ui.close();
+                                                self.save_copy();
+                                            }
+                                            if ui.button("열기…").clicked() {
+                                                ui.close();
+                                                self.open_project(ctx);
+                                            }
+                                            if ui.button("새 프로젝트").clicked() {
+                                                ui.close();
+                                                self.fresh_project();
+                                            }
+                                        });
+                                    #[cfg(feature = "ui-qa")]
+                                    {
+                                        self.qa_settings.project_menu = Some(project_menu.rect);
+                                    }
+                                    let _ = project_menu;
+                                    ui.menu_button("화면", |ui| self.appearance_options(ui));
+                                },
+                            );
+                        });
                     });
-                });
-                ui.add_space(8.);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 12.;
-                    for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
-                        .iter()
-                        .enumerate()
-                    {
-                        let tab = navigation_tab(ui, label, self.tab == i, self.palette);
-                        #[cfg(feature = "ui-qa")]
-                        {
-                            self.qa_settings.tabs[i] = Some(tab.rect);
-                        }
-                        if tab.clicked() {
-                            self.tab = i;
-                            if i == 3 {
-                                self.ai_dock_collapsed = true;
-                            }
-                        }
-                    }
-                });
             });
     }
     fn footer(&mut self, ctx: &egui::Context) {
@@ -4959,7 +4923,9 @@ impl eframe::App for Studio {
                     image::ColorType::Rgba8,
                 )
                 .expect("save QA frame");
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                if std::env::var("DOODLE_QA_VIEW").as_deref() != Ok("layout-window") {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
             }
         }
         self.poll();
@@ -5016,6 +4982,23 @@ impl eframe::App for Studio {
         }
         self.dialogs(ctx);
         self.ai_dock(ctx);
+        let chrome = doodle_core::window_chrome::show(
+            ctx,
+            &self.project.name,
+            &self.project.family,
+            self.palette,
+        );
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.project_heading = Some((
+                chrome.project,
+                self.project.name.clone(),
+                self.project.family.clone(),
+            ));
+            self.qa_chrome = Some(chrome);
+        }
+        #[cfg(not(feature = "ui-qa"))]
+        let _ = chrome;
         #[cfg(feature = "ui-qa")]
         if ctx.cumulative_frame_nr() == 10 {
             use doodle_core::companion::Mood;

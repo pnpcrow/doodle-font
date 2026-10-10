@@ -67,6 +67,9 @@ impl Studio {
         if view == "layout-companion-small" {
             self.api_provider = "local".into();
         }
+        if view == "layout-window" {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1120., 760.)));
+        }
     }
     pub(super) fn layout_qa_input(
         &mut self,
@@ -85,7 +88,43 @@ impl Studio {
         let mut target = None;
         let mut pressed = false;
         let mut secondary = false;
-        if view.starts_with("layout-project") {
+        if view == "layout-window" {
+            if let Some(chrome) = &self.qa_chrome {
+                target = match frame {
+                    3 | 4 | 15 | 16 | 41 | 42 => Some(chrome.controls[1]),
+                    // Separate this pair from the earlier restore click's triple-click window.
+                    29 | 30 | 34 | 35 => Some(chrome.project),
+                    52 | 53 => Some(chrome.controls[2]),
+                    _ => None,
+                };
+                pressed = [3, 15, 29, 34, 41, 52].contains(&frame);
+            }
+            if frame == 12 || frame == 38 {
+                assert_eq!(
+                    input.viewport().maximized,
+                    Some(true),
+                    "native window actually maximizes at frame {frame}"
+                );
+            }
+            if frame == 24 {
+                assert_eq!(
+                    input.viewport().maximized,
+                    Some(false),
+                    "native window restores"
+                );
+                let v = input.viewport();
+                let inner = v.inner_rect.unwrap();
+                let outer = v.outer_rect.unwrap();
+                assert!(
+                    (inner.top() - outer.top()).abs() < 2.,
+                    "no OS caption remains: {inner:?} / {outer:?}"
+                );
+            }
+            if frame == 52 {
+                self.project.family = "Window Close Save Check".into();
+                self.changed();
+            }
+        } else if view.starts_with("layout-project") {
             target = match frame {
                 3 | 4 | 25 | 26 | 34 | 35 => self.qa_settings.project_menu,
                 7 | 8 => Some(
