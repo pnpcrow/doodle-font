@@ -211,3 +211,74 @@ fn options_persist_independently_without_credentials() {
     std::fs::remove_file(path).unwrap();
     std::fs::remove_dir(folder).unwrap();
 }
+
+#[test]
+fn needle_motion_uses_one_existing_inference_and_cannot_inject_completion_or_frames() {
+    let mut p = payload("local");
+    p["prompt"] = json!("Set the color to red.");
+    let mut r = reply();
+    r["function_calls"] = json!([{"name":"set_color","arguments":{"color":"red"}}]);
+    let (tx, rx) = mpsc::channel();
+    let result = run_using(p.clone(), Arc::new(AtomicBool::new(false)), tx, |_, _| {
+        Ok(r.clone())
+    })
+    .unwrap();
+    assert_eq!(result["artwork"]["shapes"][0]["color"], "#ff0000");
+    let events = rx.try_iter().collect::<Vec<_>>();
+    assert!(events.contains(&Progress::Animation(Mood::Thinking)));
+    assert!(events.contains(&Progress::Animation(Mood::Coloring)));
+    assert!(!events.contains(&Progress::Animation(Mood::Done)));
+    for confidence in [0.0, 0.79, 1.01] {
+        r["confidence"] = json!(confidence);
+        assert_eq!(animation_hint(&p, Some(&r)), None);
+    }
+    r["confidence"] = json!(0.99);
+    for name in [
+        "done",
+        "needs_help",
+        "animate_frames",
+        "set_provider",
+        "run_shell",
+    ] {
+        r["function_calls"] = json!([{"name":name,"arguments":{}}]);
+        assert_eq!(animation_hint(&p, Some(&r)), None);
+    }
+    for (task, expected) in [
+        ("analyze", Some(Mood::Inspecting)),
+        ("generate", Some(Mood::Drawing)),
+        ("other", Some(Mood::Thinking)),
+        ("done", None),
+    ] {
+        r["function_calls"] = json!([{"name":"use_assistant","arguments":{"task":task}}]);
+        assert_eq!(animation_hint(&p, Some(&r)), expected);
+    }
+    assert_eq!(animation_hint(&p, None), None);
+}
+
+#[test]
+fn absent_disabled_or_uncertain_needle_keeps_activity_animation_without_extra_calls() {
+    for scenario in ["off", "missing", "uncertain"] {
+        let (url, _request) = mock("openai");
+        let mut p = payload("openai");
+        p["config"]["endpoint"] = json!(url);
+        p["action"] = json!("assist");
+        if scenario == "off" {
+            p["decision"] = json!("off");
+        }
+        let (tx, rx) = mpsc::channel();
+        run_using(p, Arc::new(AtomicBool::new(false)), tx, |_, _| {
+            assert_ne!(scenario, "off");
+            if scenario == "missing" {
+                Err("model missing".into())
+            } else {
+                let mut r = reply();
+                r["confidence"] = json!(0.1);
+                Ok(r)
+            }
+        })
+        .unwrap();
+        assert!(rx
+            .try_iter()
+            .any(|event| event == Progress::Animation(Mood::Inspecting)));
+    }
+}

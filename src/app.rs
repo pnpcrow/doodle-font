@@ -108,7 +108,7 @@ pub struct Studio {
     ai_status: String,
     ai_started: Instant,
     ai_cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-    ai_progress: Option<mpsc::Receiver<String>>,
+    ai_progress: Option<mpsc::Receiver<doodle_core::ai_progress::Progress>>,
     local_installed: bool,
     decision_mode: doodle_core::needle::Mode,
     needle_installed: bool,
@@ -471,7 +471,14 @@ impl Studio {
         }
         if let Some(rx) = &self.ai_progress {
             while let Ok(status) = rx.try_recv() {
-                self.ai_status = status;
+                match status {
+                    doodle_core::ai_progress::Progress::Message(message) => {
+                        self.ai_status = message
+                    }
+                    doodle_core::ai_progress::Progress::Animation(mood) => {
+                        self.companion.motion.react(mood)
+                    }
+                }
             }
         }
         if let Some(rx) = &self.job {
@@ -530,9 +537,11 @@ impl Studio {
                             } else { "Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요." });
                         }
                         Ok(Job::AiReply(id, drawing, result)) => {
-                            self.companion
-                                .motion
-                                .react(doodle_core::companion::Mood::Done);
+                            self.companion.motion.react(if drawing {
+                                doodle_core::companion::Mood::Done
+                            } else {
+                                doodle_core::companion::Mood::Explaining
+                            });
                             match self.receive_ai_reply(&id, drawing, result) {
                                 Ok(()) => self.notify(if drawing {
                                     "그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요."
@@ -2452,6 +2461,9 @@ impl Studio {
         self.ai_cancel = Some(cancel.clone());
         self.ai_started = Instant::now();
         self.ai_status = "AI 작업 준비 중".into();
+        self.companion
+            .motion
+            .react(doodle_core::companion::Mood::Thinking);
         self.draft = None;
         self.drag_start = None;
         let (tx, rx) = mpsc::channel();
@@ -2466,9 +2478,7 @@ impl Studio {
         });
     }
     fn ai_dock(&mut self, ctx: &egui::Context) {
-        if self.ai_cancel.is_none()
-            && self.companion.motion.mood == doodle_core::companion::Mood::Thinking
-        {
+        if self.ai_cancel.is_none() && self.companion.motion.mood.working() {
             self.companion
                 .motion
                 .react(doodle_core::companion::Mood::Idle);
@@ -2498,11 +2508,13 @@ impl Studio {
                 .backdrop_color(Color32::from_black_alpha(35))
                 .show(ctx, |ui| {
                     ui.set_width((ctx.content_rect().width() - 100.).min(700.));
-                    self.companion
-                        .motion
-                        .react(doodle_core::companion::Mood::Thinking);
+                    if !self.companion.motion.mood.working() {
+                        self.companion
+                            .motion
+                            .react(doodle_core::companion::Mood::Thinking);
+                    }
                     ui.horizontal(|ui| {
-                        self.companion.show(ui, 48., self.preferences.reduce_motion);
+                        self.companion.show(ui, 64., self.preferences.reduce_motion);
                         ui.spinner();
                         ui.label(RichText::new(&self.ai_status).strong());
                         ui.label(format!("{}초", self.ai_started.elapsed().as_secs()));
@@ -2538,7 +2550,7 @@ impl Studio {
                     ui.set_width((ctx.content_rect().width() - 100.).min(700.));
                     ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
                     ui.horizontal(|ui| {
-                        self.companion.show(ui, 48., self.preferences.reduce_motion);
+                        self.companion.show(ui, if self.ai_dock_collapsed { 48. } else { 64. }, self.preferences.reduce_motion);
                         ui.label(
                             RichText::new("두들 어시스트")
                                 .strong()
@@ -2709,6 +2721,7 @@ impl Studio {
             ui.label("입력 → 판단 → 실행 전 확인 → 아래에서 선택한 내장 AI 또는 API");
             if self.decision_mode == Mode::Needle {
                 ui.label("간단한 편집은 후보로 만들고, 불확실한 요청은 선택한 AI로 넘겨요. 한국어 판단 정확도는 제한적입니다.");
+                ui.label("판단한 작업에 맞춰 두들의 동작도 골라요. 사용하지 않아도 기본 동작은 계속됩니다.");
                 ui.horizontal(|ui| {
                     chip(ui, if self.needle_installed { "판단 모델 설치 완료" } else { "판단 모델 설치 필요 · 약 37 MB" });
                     if ui.add_enabled(self.job.is_none(), egui::Button::new(if self.needle_installed { "판단 모델 검증 · 복구" } else { "판단 모델 설치" })).clicked() {
@@ -3595,6 +3608,34 @@ impl eframe::App for Studio {
                             "live test needs installed local models"
                         );
                     }
+                    "companion-inspecting" | "companion-drawing" | "companion-coloring" => {
+                        use doodle_core::{ai_progress::Progress, companion::Mood};
+                        self.local_installed = true;
+                        self.ai_cancel = Some(std::sync::Arc::new(
+                            std::sync::atomic::AtomicBool::new(false),
+                        ));
+                        let mood = match std::env::var("DOODLE_QA_VIEW").unwrap().as_str() {
+                            "companion-inspecting" => Mood::Inspecting,
+                            "companion-coloring" => Mood::Coloring,
+                            _ => Mood::Drawing,
+                        };
+                        let (tx, rx) = mpsc::channel();
+                        self.ai_progress = Some(rx);
+                        tx.send(Progress::Message(mood.label().into())).unwrap();
+                        tx.send(Progress::Animation(mood)).unwrap();
+                        self.poll();
+                    }
+                    "companion-explaining" => {
+                        let (tx, rx) = mpsc::channel();
+                        self.job = Some(rx);
+                        tx.send(Ok(Job::AiReply(
+                            self.project.glyphs[self.selected].id.clone(),
+                            false,
+                            serde_json::json!({"answer":"기준선과 획의 균형을 확인했어요."}),
+                        )))
+                        .unwrap();
+                        self.poll();
+                    }
                     "ai-busy" | "ai-recover" => {
                         self.local_installed = true;
                         self.ai_cancel = Some(std::sync::Arc::new(
@@ -4019,6 +4060,10 @@ impl eframe::App for Studio {
             use doodle_core::companion::Mood;
             let expected = match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
                 "ai-busy" => Some(Mood::Thinking),
+                "companion-inspecting" => Some(Mood::Inspecting),
+                "companion-drawing" => Some(Mood::Drawing),
+                "companion-coloring" => Some(Mood::Coloring),
+                "companion-explaining" => Some(Mood::Explaining),
                 "ai-recover" | "ai-candidate-invalid" => Some(Mood::NeedsHelp),
                 "ai-candidates" | "ai-candidate-accept" | "ai-typography" => Some(Mood::Done),
                 _ => None,

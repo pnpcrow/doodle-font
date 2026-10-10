@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod ai_install;
 pub mod ai_pipeline;
+pub mod ai_progress;
 pub mod ai_settings;
 pub mod appearance;
 pub mod companion;

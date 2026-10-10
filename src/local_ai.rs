@@ -146,7 +146,7 @@ impl Server {
 pub fn run(
     mut payload: Value,
     cancel: Arc<AtomicBool>,
-    status: Sender<String>,
+    status: Sender<crate::ai_progress::Progress>,
 ) -> Result<Value, String> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

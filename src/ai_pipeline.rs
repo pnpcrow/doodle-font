@@ -1,4 +1,5 @@
 //! Shared input decision and preflight for local Gemma and both external providers.
+use crate::{ai_progress::Progress, companion::Mood};
 use crate::{model::*, needle::Mode};
 use serde_json::{json, Value};
 use std::sync::{
@@ -17,14 +18,14 @@ const FALLBACK: &str = "앞단 판단이 불확실하거나 사용할 수 없어
 pub fn run(
     payload: Value,
     cancel: Arc<AtomicBool>,
-    status: Sender<String>,
+    status: Sender<Progress>,
 ) -> Result<Value, String> {
     run_using(payload, cancel, status, crate::needle::infer)
 }
 fn run_using(
     payload: Value,
     cancel: Arc<AtomicBool>,
-    status: Sender<String>,
+    status: Sender<Progress>,
     decide: impl FnOnce(&str, Arc<AtomicBool>) -> Result<Value, String>,
 ) -> Result<Value, String> {
     let mode = match payload.get("decision") {
@@ -35,10 +36,30 @@ fn run_using(
     let glyph = crate::ai::validate_target(&payload, payload["action"] != "assist")?;
     check(!cancel.load(Ordering::Relaxed), "AI 작업을 취소했어요.")?;
     let decision = if mode == Mode::Needle {
+        let _ = status.send(Progress::Animation(Mood::Thinking));
         let _ = status.send("입력 판단 중 · Needle 3".into());
         let reply = decide(payload["prompt"].as_str().unwrap_or(""), cancel.clone());
-        plan(&payload, &glyph, reply.as_ref().ok())
+        let decision = plan(&payload, &glyph, reply.as_ref().ok());
+        // Reuse the existing single inference. Only validated, bounded semantic cues
+        // choose a clip; Rust owns every frame, transition, and terminal state.
+        if !cancel.load(Ordering::Relaxed) {
+            let fallback = if payload["action"] == "assist" {
+                Mood::Inspecting
+            } else {
+                Mood::Drawing
+            };
+            let _ = status.send(Progress::Animation(
+                motion_for_reply(&payload, reply.as_ref().ok(), decision.candidate.is_some())
+                    .unwrap_or(fallback),
+            ));
+        }
+        decision
     } else {
+        let _ = status.send(Progress::Animation(if payload["action"] == "assist" {
+            Mood::Inspecting
+        } else {
+            Mood::Drawing
+        }));
         Decision {
             candidate: None,
             note: "",
@@ -63,6 +84,56 @@ fn run_using(
     }
     Ok(result)
 }
+/// Advisory motion selection, with the same trust gates as editing decisions.
+/// Errors/missing models/uncertain Korean requests simply keep the activity fallback.
+pub fn animation_hint(payload: &Value, reply: Option<&Value>) -> Option<Mood> {
+    let glyph: Glyph = serde_json::from_value(payload["glyph"].clone()).ok()?;
+    let quick = plan(payload, &glyph, reply).candidate.is_some();
+    motion_for_reply(payload, reply, quick)
+}
+fn motion_for_reply(payload: &Value, reply: Option<&Value>, quick: bool) -> Option<Mood> {
+    let reply = reply?;
+    let call = validated_call(reply)?;
+    if payload["action"] == "assist" {
+        return Some(Mood::Inspecting);
+    }
+    match call["name"].as_str()? {
+        "set_color" => quick.then_some(Mood::Coloring),
+        "set_stroke" => quick.then_some(Mood::Drawing),
+        "use_assistant" => match call["arguments"]["task"].as_str()? {
+            "analyze" => Some(Mood::Inspecting),
+            "generate" => Some(Mood::Drawing),
+            "other" => Some(Mood::Thinking),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+fn validated_call(reply: &Value) -> Option<&Value> {
+    if reply["success"] != true
+        || !reply["confidence"]
+            .as_f64()
+            .is_some_and(|n| (0.8..=1.).contains(&n))
+        || !reply["suppressed_calls"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        || !reply["validation"]["ungrounded"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+        || reply["validation"]["negation"] != false
+    {
+        return None;
+    }
+    let calls = reply["function_calls"]
+        .as_array()
+        .filter(|a| a.len() == 1)?;
+    let call = &calls[0];
+    matches!(
+        call["name"].as_str(),
+        Some("set_color" | "set_stroke" | "use_assistant")
+    )
+    .then_some(call)
+}
 #[cfg(test)]
 #[path = "ai_pipeline_tests.rs"]
 mod tests;
@@ -77,24 +148,9 @@ pub fn plan(payload: &Value, glyph: &Glyph, reply: Option<&Value>) -> Decision {
     let Some(reply) = reply else {
         return fallback();
     };
-    if reply["success"] != true
-        || !reply["confidence"]
-            .as_f64()
-            .is_some_and(|n| (0.8..=1.).contains(&n))
-        || !reply["suppressed_calls"]
-            .as_array()
-            .is_some_and(Vec::is_empty)
-        || !reply["validation"]["ungrounded"]
-            .as_array()
-            .is_some_and(Vec::is_empty)
-        || reply["validation"]["negation"] != false
-    {
-        return fallback();
-    }
-    let Some(calls) = reply["function_calls"].as_array().filter(|a| a.len() == 1) else {
+    let Some(call) = validated_call(reply) else {
         return fallback();
     };
-    let call = &calls[0];
     if call["name"] == "use_assistant" || payload["action"] == "assist" {
         return Decision {
             candidate: None,
