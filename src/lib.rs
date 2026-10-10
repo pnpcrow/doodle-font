@@ -5,6 +5,7 @@ pub mod ai_progress;
 pub mod ai_settings;
 pub mod appearance;
 pub mod companion;
+pub mod companion_compare;
 pub mod document;
 pub mod font;
 pub mod glyph_layout;

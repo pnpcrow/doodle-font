@@ -32,6 +32,7 @@ impl Theme {
 pub struct Preferences {
     pub theme: Theme,
     pub reduce_motion: bool,
+    pub companion_renderer: crate::companion::Renderer,
 }
 impl Preferences {
     pub fn load(path: &Path) -> Self {

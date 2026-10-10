@@ -37,6 +37,7 @@ enum Job {
 }
 pub struct Studio {
     companion: doodle_core::companion::Companion,
+    companion_comparison: Option<doodle_core::companion_compare::Comparison>,
     preferences: Preferences,
     palette: Palette,
     show_properties: bool,
@@ -134,6 +135,8 @@ pub struct Studio {
     #[cfg(feature = "ui-qa")]
     qa_themes: [Option<Rect>; 3],
     #[cfg(feature = "ui-qa")]
+    qa_renderers: [Option<Rect>; 3],
+    #[cfg(feature = "ui-qa")]
     qa_install_button: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_candidate_accept: Option<Rect>,
@@ -193,7 +196,11 @@ impl Studio {
             (new_project(), String::new())
         };
         let mut s = Self {
-            companion: doodle_core::companion::Companion::new(ctx),
+            companion: doodle_core::companion::Companion::with_renderer(
+                ctx,
+                preferences.companion_renderer,
+            ),
+            companion_comparison: None,
             preferences,
             palette: Palette::of(ctx),
             show_properties: false,
@@ -291,6 +298,8 @@ impl Studio {
             qa_canvas: None,
             #[cfg(feature = "ui-qa")]
             qa_themes: [None; 3],
+            #[cfg(feature = "ui-qa")]
+            qa_renderers: [None; 3],
             #[cfg(feature = "ui-qa")]
             qa_install_button: None,
             #[cfg(feature = "ui-qa")]
@@ -756,7 +765,34 @@ impl Studio {
             &mut self.preferences.reduce_motion,
             "컴패니언 움직임 줄이기",
         );
+        ui.label("컴패니언 표현");
+        ui.horizontal(|ui| {
+            use doodle_core::companion::Renderer;
+            for (index, renderer) in [Renderer::Image, Renderer::Vector].into_iter().enumerate() {
+                let response = ui.selectable_value(
+                    &mut self.preferences.companion_renderer,
+                    renderer,
+                    renderer.label(),
+                );
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_renderers[index] = Some(response.rect);
+                }
+                let _ = (index, response);
+            }
+            let compare = ui.button("나란히 비교");
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_renderers[2] = Some(compare.rect);
+            }
+            if compare.clicked() {
+                self.companion_comparison =
+                    Some(doodle_core::companion_compare::Comparison::new(ui.ctx()));
+            }
+        });
         if old != self.preferences {
+            self.companion
+                .set_renderer(ui.ctx(), self.preferences.companion_renderer);
             ui.ctx().set_theme(self.preferences.theme.preference());
             self.palette = Palette::of(ui.ctx());
             if let Err(e) = self
@@ -2878,6 +2914,25 @@ impl Studio {
         }
     }
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.ai_cancel.is_none() {
+            if let Some(mut comparison) = self.companion_comparison.take() {
+                use doodle_core::companion_compare::Action;
+                match comparison.show(ctx) {
+                    Action::KeepOpen => self.companion_comparison = Some(comparison),
+                    Action::Close => {}
+                    Action::Choose(renderer) => {
+                        self.preferences.companion_renderer = renderer;
+                        self.companion.set_renderer(ctx, renderer);
+                        if let Err(e) = self
+                            .preferences
+                            .save(&self.save_path.with_file_name("appearance.json"))
+                        {
+                            self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
+                        }
+                    }
+                }
+            }
+        }
         if self.ai_cancel.is_some() {
             return;
         }
@@ -3212,6 +3267,31 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if qa_view.starts_with("renderer-") {
+            input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            let frame = ctx.cumulative_frame_nr();
+            let rect = match (qa_view.as_str(), frame) {
+                ("renderer-write" | "renderer-compare-small", 3 | 4) => self.qa_renderers[2],
+                ("renderer-image", 3 | 4) => self.qa_renderers[0],
+                ("renderer-write", 7 | 8) => self
+                    .companion_comparison
+                    .as_ref()
+                    .and_then(|c| c.qa_choices[1]),
+                _ => None,
+            };
+            if let Some(rect) = rect {
+                input.events.push(egui::Event::PointerMoved(rect.center()));
+                input.events.push(egui::Event::PointerButton {
+                    pos: rect.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 3 || frame == 7,
+                    modifiers: Default::default(),
+                });
+            }
+            return;
+        }
         if qa_view == "appearance-write" {
             input
                 .events
@@ -3425,6 +3505,28 @@ impl eframe::App for Studio {
         if let Ok(output) = std::env::var("DOODLE_QA_OUTPUT") {
             if ctx.cumulative_frame_nr() == 0 {
                 match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
+                    "renderer-write"
+                    | "renderer-restored"
+                    | "renderer-image"
+                    | "renderer-compare-small" => {
+                        use doodle_core::companion::Renderer;
+                        let view = std::env::var("DOODLE_QA_VIEW").unwrap();
+                        self.tab = 3;
+                        self.ai_dock_collapsed = true;
+                        if view == "renderer-write" {
+                            self.preferences.companion_renderer = Renderer::Image;
+                            self.companion.set_renderer(ctx, Renderer::Image);
+                        }
+                        if view == "renderer-restored" || view == "renderer-image" {
+                            assert_eq!(self.preferences.companion_renderer, Renderer::Vector);
+                            assert_eq!(self.companion.renderer(), Renderer::Vector);
+                        }
+                        if view.ends_with("small") {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
+                                1120., 760.,
+                            )));
+                        }
+                    }
                     "appearance-write" => {
                         self.tab = 3;
                         self.preferences.theme = Theme::Light;
@@ -3908,6 +4010,38 @@ impl eframe::App for Studio {
                 );
             }
             let connection_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+            if connection_view.starts_with("renderer-") && ctx.cumulative_frame_nr() == 10 {
+                use doodle_core::companion::Renderer;
+                if connection_view == "renderer-compare-small" {
+                    let comparison = self
+                        .companion_comparison
+                        .as_ref()
+                        .expect("comparison opened by pointer");
+                    let rect = comparison.qa_rect.expect("comparison rendered");
+                    assert!(
+                        ctx.content_rect().contains_rect(rect),
+                        "comparison exceeds small window: {rect:?}"
+                    );
+                    assert!(comparison.qa_choices.iter().all(Option::is_some));
+                } else {
+                    let expected = if connection_view == "renderer-image" {
+                        Renderer::Image
+                    } else {
+                        Renderer::Vector
+                    };
+                    assert_eq!(self.preferences.companion_renderer, expected);
+                    assert_eq!(self.companion.renderer(), expected);
+                    assert!(
+                        self.companion_comparison.is_none(),
+                        "choosing renderer closes comparison"
+                    );
+                    assert_eq!(
+                        Preferences::load(&self.save_path.with_file_name("appearance.json"))
+                            .companion_renderer,
+                        expected
+                    );
+                }
+            }
             let connection_flow = connection_view.starts_with("connections-");
             let floating_flow = connection_view.starts_with("ai-floating");
             let export_flow = connection_view.starts_with("export-");

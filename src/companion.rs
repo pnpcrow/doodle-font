@@ -2,6 +2,29 @@
 //! No inference runs on the render thread, at rest, or for individual frames.
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Vec2};
 use std::f32::consts::{PI, TAU};
+#[path = "companion_vector.rs"]
+mod vector;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Renderer {
+    Image,
+    #[default]
+    Vector,
+}
+impl Renderer {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Image => "원본 그림",
+            Self::Vector => "벡터",
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub struct Footprint {
+    pub custom_texture_bytes: usize,
+    pub geometry_bytes: usize,
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mood {
@@ -310,13 +333,20 @@ impl Motion {
 const CENTER: Vec2 = Vec2::new(0.49, 0.565);
 const GRID: usize = 28;
 pub struct Companion {
+    data: RenderData,
+    pub motion: Motion,
+}
+enum RenderData {
+    Image(Bitmap),
+    Vector(vector::VectorArt),
+}
+struct Bitmap {
     texture: egui::TextureHandle,
     tint_texture: egui::TextureHandle,
     body_radius: [f32; 128],
-    pub motion: Motion,
 }
-impl Companion {
-    pub fn new(ctx: &egui::Context) -> Self {
+impl Bitmap {
+    fn new(ctx: &egui::Context) -> Self {
         let image = image::load_from_memory(include_bytes!("../assets/companion/body.png"))
             .expect("companion sprite")
             .resize(384, 384, image::imageops::FilterType::Lanczos3)
@@ -362,7 +392,47 @@ impl Companion {
             texture,
             tint_texture,
             body_radius,
+        }
+    }
+}
+impl Companion {
+    pub fn new(ctx: &egui::Context) -> Self {
+        Self::with_renderer(ctx, Renderer::default())
+    }
+    pub fn with_renderer(ctx: &egui::Context, renderer: Renderer) -> Self {
+        Self {
+            data: Self::load_renderer(ctx, renderer),
             motion: Motion::default(),
+        }
+    }
+    fn load_renderer(ctx: &egui::Context, renderer: Renderer) -> RenderData {
+        match renderer {
+            Renderer::Image => RenderData::Image(Bitmap::new(ctx)),
+            Renderer::Vector => RenderData::Vector(vector::VectorArt::new()),
+        }
+    }
+    pub fn renderer(&self) -> Renderer {
+        match &self.data {
+            RenderData::Image(_) => Renderer::Image,
+            RenderData::Vector(_) => Renderer::Vector,
+        }
+    }
+    pub fn set_renderer(&mut self, ctx: &egui::Context, renderer: Renderer) {
+        if self.renderer() != renderer {
+            self.data = Self::load_renderer(ctx, renderer);
+        }
+    }
+    /// Character-owned geometry and uncompressed custom RGBA textures, not process RSS.
+    pub fn footprint(&self) -> Footprint {
+        match &self.data {
+            RenderData::Image(bitmap) => Footprint {
+                custom_texture_bytes: 2 * 384 * 384 * 4,
+                geometry_bytes: std::mem::size_of_val(&bitmap.body_radius),
+            },
+            RenderData::Vector(vector) => Footprint {
+                custom_texture_bytes: 0,
+                geometry_bytes: vector.bytes(),
+            },
         }
     }
     pub fn show(&mut self, ui: &mut egui::Ui, size: f32, reduce: bool) -> egui::Response {
@@ -389,6 +459,10 @@ impl Companion {
         response.on_hover_text(self.motion.mood.label())
     }
     fn morph(&self, uv: Vec2, pose: Pose) -> Vec2 {
+        let body_radius = match &self.data {
+            RenderData::Image(bitmap) => &bitmap.body_radius,
+            RenderData::Vector(vector) => &vector.radius,
+        };
         let delta = uv - CENTER;
         if delta.length_sq() < 0.000001 {
             return uv;
@@ -396,7 +470,7 @@ impl Companion {
         let angle = delta.angle().rem_euclid(TAU) / TAU * 128.;
         let index = angle as usize % 128;
         let original = egui::lerp(
-            self.body_radius[index]..=self.body_radius[(index + 1) % 128],
+            body_radius[index]..=body_radius[(index + 1) % 128],
             angle.fract(),
         );
         let dir = delta.normalized();
@@ -419,40 +493,49 @@ impl Companion {
                 + rotation * (p * pose.scale * rect.width() * 0.85)
                 - Vec2::new(0., pose.lift * rect.height())
         };
-        let mut mesh = egui::Mesh::with_texture(self.texture.id());
-        for y in 0..=GRID {
-            for x in 0..=GRID {
-                let uv = Vec2::new(x as f32 / GRID as f32, y as f32 / GRID as f32);
-                mesh.vertices.push(egui::epaint::Vertex {
-                    pos: transform(uv),
-                    uv: Pos2::new(uv.x, uv.y),
-                    color: Color32::WHITE,
-                });
+        if let RenderData::Image(bitmap) = &self.data {
+            let mut mesh = egui::Mesh::with_texture(bitmap.texture.id());
+            for y in 0..=GRID {
+                for x in 0..=GRID {
+                    let uv = Vec2::new(x as f32 / GRID as f32, y as f32 / GRID as f32);
+                    mesh.vertices.push(egui::epaint::Vertex {
+                        pos: transform(uv),
+                        uv: Pos2::new(uv.x, uv.y),
+                        color: Color32::WHITE,
+                    });
+                }
             }
-        }
-        for y in 0..GRID {
-            for x in 0..GRID {
-                let a = (y * (GRID + 1) + x) as u32;
-                let b = a + GRID as u32 + 1;
-                mesh.indices.extend([a, a + 1, b + 1, a, b + 1, b]);
+            for y in 0..GRID {
+                for x in 0..GRID {
+                    let a = (y * (GRID + 1) + x) as u32;
+                    let b = a + GRID as u32 + 1;
+                    mesh.indices.extend([a, a + 1, b + 1, a, b + 1, b]);
+                }
             }
-        }
-        if pose.tint[3] > 0.005 {
-            let mut tint = mesh.clone();
-            tint.texture_id = self.tint_texture.id();
-            let color = Color32::from_rgba_unmultiplied(
-                (pose.tint[0].clamp(0., 1.) * 255.) as u8,
-                (pose.tint[1].clamp(0., 1.) * 255.) as u8,
-                (pose.tint[2].clamp(0., 1.) * 255.) as u8,
-                (pose.tint[3].clamp(0., 1.) * 255.) as u8,
+            if pose.tint[3] > 0.005 {
+                let mut tint = mesh.clone();
+                tint.texture_id = bitmap.tint_texture.id();
+                let color = Color32::from_rgba_unmultiplied(
+                    (pose.tint[0].clamp(0., 1.) * 255.) as u8,
+                    (pose.tint[1].clamp(0., 1.) * 255.) as u8,
+                    (pose.tint[2].clamp(0., 1.) * 255.) as u8,
+                    (pose.tint[3].clamp(0., 1.) * 255.) as u8,
+                );
+                for vertex in &mut tint.vertices {
+                    vertex.color = color;
+                }
+                painter.add(egui::Shape::mesh(mesh));
+                painter.add(egui::Shape::mesh(tint));
+            } else {
+                painter.add(egui::Shape::mesh(mesh));
+            }
+        } else if let RenderData::Vector(vector) = &self.data {
+            vector.paint(
+                painter,
+                rect.width() * painter.ctx().pixels_per_point(),
+                pose,
+                &transform,
             );
-            for vertex in &mut tint.vertices {
-                vertex.color = color;
-            }
-            painter.add(egui::Shape::mesh(mesh));
-            painter.add(egui::Shape::mesh(tint));
-        } else {
-            painter.add(egui::Shape::mesh(mesh));
         }
         let eye_rotation = egui::emath::Rot2::from_angle(18_f32.to_radians());
         for center in [Vec2::new(0.364, 0.524), Vec2::new(0.631, 0.617)] {

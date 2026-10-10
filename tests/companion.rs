@@ -1,4 +1,4 @@
-use doodle_core::companion::{Companion, Mood, Motion, Pose};
+use doodle_core::companion::{Companion, Mood, Motion, Pose, Renderer};
 use eframe::egui::{self, Pos2, Rect, Vec2};
 
 const MOODS: [Mood; 8] = [
@@ -147,7 +147,7 @@ fn reduced_motion_keeps_state_identity_without_time_varying_animation() {
 #[test]
 fn morphed_mesh_and_face_stay_inside_the_companion_slot() {
     let ctx = egui::Context::default();
-    let mut pet = Companion::new(&ctx);
+    let mut pet = Companion::with_renderer(&ctx, Renderer::Image);
     let sprite = image::load_from_memory(include_bytes!("../assets/companion/body.png"))
         .unwrap()
         .to_rgba8();
@@ -182,6 +182,92 @@ fn morphed_mesh_and_face_stay_inside_the_companion_slot() {
                             assert!(
                                 rect.contains(v.pos),
                                 "visible body escaped {mood:?}: {:?}",
+                                v.pos
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn renderer_switch_preserves_motion_and_vector_has_no_custom_texture() {
+    let ctx = egui::Context::default();
+    let mut pet = Companion::with_renderer(&ctx, Renderer::Image);
+    let mut reference = Motion::default();
+    pet.motion.react(Mood::Drawing);
+    reference.react(Mood::Drawing);
+    for i in 0..90 {
+        let time = i as f64 / 60.;
+        assert_eq!(
+            pet.motion.step(time, Vec2::splat(0.5), false),
+            reference.step(time, Vec2::splat(0.5), false)
+        );
+    }
+    assert_eq!(pet.footprint().custom_texture_bytes, 2 * 384 * 384 * 4);
+    for renderer in [Renderer::Vector, Renderer::Image, Renderer::Vector] {
+        let before = pet.motion.pose;
+        pet.set_renderer(&ctx, renderer);
+        assert_eq!(pet.motion.pose, before);
+        assert_eq!(pet.renderer(), renderer);
+    }
+    assert_eq!(pet.footprint().custom_texture_bytes, 0);
+    for i in 90..180 {
+        let time = i as f64 / 60.;
+        assert_eq!(
+            pet.motion.step(time, Vec2::splat(-0.5), false),
+            reference.step(time, Vec2::splat(-0.5), false)
+        );
+    }
+    let vector_ctx = egui::Context::default();
+    let vector = Companion::with_renderer(&vector_ctx, Renderer::Vector);
+    let output = vector_ctx.run(egui::RawInput::default(), |ctx| {
+        vector.paint(
+            &ctx.debug_painter(),
+            Rect::from_min_size(Pos2::ZERO, Vec2::splat(192.)),
+            Pose::default(),
+        )
+    });
+    // Managed(0) is egui's shared white/font atlas, not a character texture.
+    assert!(output
+        .textures_delta
+        .set
+        .iter()
+        .all(|(id, _)| *id == egui::TextureId::Managed(0)));
+}
+
+#[test]
+fn vector_rendering_is_finite_bounded_and_valid_at_each_detail_level() {
+    let ctx = egui::Context::default();
+    let mut pet = Companion::with_renderer(&ctx, Renderer::Vector);
+    for dpi in [1., 2.] {
+        ctx.set_pixels_per_point(dpi);
+        for size in [64., 192., 512.] {
+            let rect = Rect::from_min_size(Pos2::new(50., 50.), Vec2::splat(size));
+            pet.motion = Motion::default();
+            for frame in 0..960 {
+                pet.motion.react(MOODS[frame / 120]);
+                let pose = pet.motion.step(
+                    frame as f64 / 60.,
+                    Vec2::new((frame as f32 * 0.1).sin(), -1.),
+                    false,
+                );
+                let output = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(rect.expand(100.)),
+                        ..Default::default()
+                    },
+                    |ctx| pet.paint(&ctx.debug_painter(), rect, pose),
+                );
+                for p in ctx.tessellate(output.shapes, output.pixels_per_point) {
+                    if let egui::epaint::Primitive::Mesh(mesh) = p.primitive {
+                        assert!(mesh.is_valid());
+                        for v in mesh.vertices {
+                            assert!(
+                                v.pos.is_finite() && rect.contains(v.pos),
+                                "escaped {size}/{dpi}: {:?}",
                                 v.pos
                             );
                         }

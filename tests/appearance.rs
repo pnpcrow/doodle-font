@@ -1,6 +1,6 @@
 use doodle_core::{
     appearance::{self, Preferences, Theme},
-    companion::{Mood, Motion},
+    companion::{Mood, Motion, Renderer},
 };
 use eframe::egui::{self, Pos2, Vec2};
 
@@ -12,6 +12,7 @@ fn theme_preferences_survive_restart_and_system_mode_tracks_os_changes() {
         let prefs = Preferences {
             theme,
             reduce_motion: true,
+            companion_renderer: Renderer::Vector,
         };
         prefs.save(&path).unwrap();
         assert_eq!(Preferences::load(&path), prefs);
@@ -37,6 +38,20 @@ fn theme_preferences_survive_restart_and_system_mode_tracks_os_changes() {
     }
     std::fs::remove_file(path).unwrap();
     std::fs::remove_dir(root).unwrap();
+}
+
+#[test]
+fn older_preferences_adopt_vector_without_losing_theme_or_explicit_renderer_choice() {
+    let old: Preferences =
+        serde_json::from_str(r#"{"theme":"dark","reduce_motion":true}"#).unwrap();
+    assert_eq!(old.theme, Theme::Dark);
+    assert!(old.reduce_motion);
+    assert_eq!(old.companion_renderer, Renderer::Vector);
+    let explicit: Preferences = serde_json::from_str(
+        r#"{"theme":"dark","reduce_motion":true,"companion_renderer":"image"}"#,
+    )
+    .unwrap();
+    assert_eq!(explicit.companion_renderer, Renderer::Image);
 }
 
 #[test]
