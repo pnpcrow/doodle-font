@@ -13,6 +13,18 @@ const ACCENT: Color32 = Color32::from_rgb(211, 102, 65);
 const PAPER: Color32 = Color32::from_rgb(249, 248, 243);
 const LINE: Color32 = Color32::from_rgb(226, 227, 217);
 type JobResult = Result<Job, String>;
+
+#[cfg(feature = "ui-qa")]
+#[derive(Default)]
+struct DockQa {
+    baseline: Option<Rect>,
+    dock: Option<Rect>,
+    answer: Option<Rect>,
+    answer_offset: f32,
+    prompt: Option<Rect>,
+    prompt_offset: f32,
+    collapse: Option<Rect>,
+}
 enum Job {
     Export(font::ExportResult, Option<PathBuf>),
     AiReply(String, bool, serde_json::Value),
@@ -83,6 +95,7 @@ pub struct Studio {
     ai_color: bool,
     ai_action: bool,
     ai_answer: String,
+    ai_dock_collapsed: bool,
     candidate_review: Option<(String, String)>,
     ai_status: String,
     ai_started: Instant,
@@ -122,6 +135,8 @@ pub struct Studio {
     qa_api_key: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_forget_key: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_dock: DockQa,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -248,6 +263,7 @@ impl Studio {
             ai_color: true,
             ai_action: false,
             ai_answer: String::new(),
+            ai_dock_collapsed: false,
             candidate_review: None,
             ai_status: String::new(),
             ai_started: Instant::now(),
@@ -288,6 +304,8 @@ impl Studio {
             qa_api_key: None,
             #[cfg(feature = "ui-qa")]
             qa_forget_key: None,
+            #[cfg(feature = "ui-qa")]
+            qa_dock: Default::default(),
         };
         s.reindex();
         s.refresh_catalog();
@@ -2475,9 +2493,10 @@ impl Studio {
                     );
                 });
         } else {
-            area.show(ctx, |ui| {
+            let dock = area.show(ctx, |ui| {
                 frame.show(ui, |ui| {
                     ui.set_width((ctx.content_rect().width() - 100.).min(700.));
+                    ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("DOODLE ASSIST").strong().color(ACCENT));
                         chip(
@@ -2492,7 +2511,24 @@ impl Studio {
                         );
                         ui.selectable_value(&mut self.ai_action, false, "그림 상담");
                         ui.selectable_value(&mut self.ai_action, true, "후보 만들기");
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let collapse = ui.button(if self.ai_dock_collapsed {
+                                "펼치기"
+                            } else {
+                                "접기"
+                            });
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_dock.collapse = Some(collapse.rect);
+                            }
+                            if collapse.clicked() {
+                                self.ai_dock_collapsed = !self.ai_dock_collapsed;
+                            }
+                        });
                     });
+                    if self.ai_dock_collapsed {
+                        return;
+                    }
                     let candidate_count = self
                         .project
                         .glyphs
@@ -2506,24 +2542,70 @@ impl Studio {
                         self.open_candidate_review();
                     }
                     if !self.ai_answer.is_empty() {
-                        egui::ScrollArea::vertical()
-                            .id_salt("ai-answer")
-                            .max_height(130.)
+                        let answer = egui::Frame::new()
+                            .fill(PAPER)
+                            .corner_radius(8)
+                            .inner_margin(8)
                             .show(ui, |ui| {
-                                ui.label(&self.ai_answer);
-                            });
+                                egui::ScrollArea::vertical()
+                                    .id_salt("ai-answer")
+                                    .max_height((ctx.content_rect().height() * 0.18).min(120.))
+                                    .auto_shrink([false, true])
+                                    .scroll_bar_visibility(
+                                        egui::scroll_area::ScrollBarVisibility::AlwaysVisible,
+                                    )
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Label::new(&self.ai_answer)
+                                                .wrap()
+                                                .selectable(true),
+                                        );
+                                    })
+                            })
+                            .inner;
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_dock.answer = Some(answer.inner_rect);
+                            self.qa_dock.answer_offset = answer.state.offset.y;
+                        }
+                        let _ = answer;
                     }
                     ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [ui.available_width() - 85., 46.],
-                            egui::TextEdit::multiline(&mut self.ai_prompt).hint_text(
-                                if self.ai_action {
-                                    "이 글자를 굵고 둥근 손글씨로 그려줘."
-                                } else {
-                                    "이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?"
-                                },
-                            ),
-                        );
+                        let width = ui.available_width() - 85.;
+                        let prompt = egui::Frame::new()
+                            .fill(Color32::WHITE)
+                            .stroke(Stroke::new(1_f32, LINE))
+                            .corner_radius(6)
+                            .inner_margin(6)
+                            .show(ui, |ui| {
+                                egui::ScrollArea::vertical()
+                                    .id_salt("ai-prompt")
+                                    .max_width(width - 14.)
+                                    .max_height(56.)
+                                    .min_scrolled_height(56.)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                    egui::TextEdit::multiline(&mut self.ai_prompt)
+                                        .frame(false)
+                                        .margin(0)
+                                        .desired_width(f32::INFINITY)
+                                        .desired_rows(2)
+                                        .hint_text(if self.ai_action {
+                                            "이 글자를 굵고 둥근 손글씨로 그려줘."
+                                        } else {
+                                            "이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?"
+                                        }),
+                                );
+                                    })
+                            })
+                            .inner;
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_dock.prompt = Some(prompt.inner_rect);
+                            self.qa_dock.prompt_offset = prompt.state.offset.y;
+                        }
+                        let _ = prompt;
                         let send = ui.add_enabled(
                             self.job.is_none() && !self.ai_prompt.trim().is_empty(),
                             egui::Button::new(if self.ai_action {
@@ -2544,6 +2626,11 @@ impl Studio {
                     });
                 });
             });
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_dock.dock = Some(dock.response.rect);
+            }
+            let _ = dock;
         }
     }
     fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
@@ -2960,6 +3047,56 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if qa_view.starts_with("ai-floating") {
+            input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            let frame = ctx.cumulative_frame_nr();
+            let scroll = match frame {
+                16 => self.qa_dock.answer,
+                22 => self.qa_dock.prompt,
+                _ => None,
+            };
+            if let Some(rect) = scroll {
+                input.events.push(egui::Event::PointerMoved(rect.center()));
+                input.events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0., -160.),
+                    modifiers: Default::default(),
+                });
+            }
+            if (18..=20).contains(&frame) {
+                let rect = self.qa_dock.answer.unwrap();
+                let pos = rect.center() + Vec2::new(if frame == 18 { -10. } else { 10. }, 0.);
+                assert!(
+                    self.qa_canvas.unwrap().contains(pos),
+                    "Test drag must overlap the canvas below the dock"
+                );
+                input.events.push(egui::Event::PointerMoved(pos));
+                if frame != 19 {
+                    input.events.push(egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 18,
+                        modifiers: Default::default(),
+                    });
+                }
+            }
+            if let Some(rect) = self
+                .qa_dock
+                .collapse
+                .filter(|_| [26, 27, 32, 33].contains(&frame))
+            {
+                input.events.push(egui::Event::PointerMoved(rect.center()));
+                input.events.push(egui::Event::PointerButton {
+                    pos: rect.center(),
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 26 || frame == 32,
+                    modifiers: Default::default(),
+                });
+            }
+            return;
+        }
         if qa_view.starts_with("connections-") {
             input
                 .events
@@ -3145,6 +3282,15 @@ impl eframe::App for Studio {
                         self.api_endpoint = "https://api.anthropic.com/v1".into();
                         self.decision_mode = doodle_core::needle::Mode::Off;
                     }
+                    "ai-floating" | "ai-floating-small" => {
+                        self.tab = 0;
+                        self.local_installed = false;
+                        if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("ai-floating-small") {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
+                                1120., 760.,
+                            )));
+                        }
+                    }
                     "connections-write" => {
                         self.tab = 3;
                         self.select_ai_provider("openai");
@@ -3233,6 +3379,62 @@ impl eframe::App for Studio {
                 }
             }
             ctx.request_repaint();
+            if std::env::var("DOODLE_QA_VIEW")
+                .unwrap_or_default()
+                .starts_with("ai-floating")
+            {
+                let frame = ctx.cumulative_frame_nr();
+                if frame == 4 {
+                    self.qa_dock.baseline = self.qa_canvas;
+                }
+                if frame == 6 {
+                    self.local_installed = true;
+                }
+                if frame == 10 {
+                    assert_eq!(
+                        self.qa_canvas, self.qa_dock.baseline,
+                        "AI availability must not resize the canvas"
+                    );
+                    self.ai_answer = (1..=80).map(|n| format!("{n}. A의 획 균형과 자간을 살펴보세요. 이 설명은 스크롤로 확인하는 UI 시험용 문장입니다.\n")).collect();
+                    self.ai_prompt =
+                        "현재 A의 모양을 유지하고 획을 부드럽게 다듬어 줘.\n".repeat(60);
+                }
+                if frame == 24 {
+                    assert_eq!(
+                        self.qa_canvas, self.qa_dock.baseline,
+                        "Long messages must not resize the canvas"
+                    );
+                    assert!(self.qa_dock.answer.unwrap().height() <= 121.);
+                    assert!(self.qa_dock.prompt.unwrap().height() <= 57.);
+                    assert!(
+                        self.qa_dock.answer_offset > 0.,
+                        "Answer must respond to mouse-wheel scrolling"
+                    );
+                    assert!(
+                        self.qa_dock.prompt_offset > 0.,
+                        "Prompt must scroll independently"
+                    );
+                    assert!(self.qa_dock.dock.unwrap().height() < 340.);
+                }
+                if frame == 30 {
+                    assert!(self.ai_dock_collapsed);
+                    assert!(self.qa_dock.dock.unwrap().height() < 100.);
+                    assert_eq!(self.qa_canvas, self.qa_dock.baseline);
+                }
+                if frame == 36 {
+                    assert!(!self.ai_dock_collapsed);
+                    assert!(self.qa_dock.dock.unwrap().height() < 340.);
+                    assert_eq!(self.qa_canvas, self.qa_dock.baseline);
+                    assert_eq!(
+                        self.project.glyphs[0].artwork.shapes.len(),
+                        2,
+                        "Dock input must not draw through to the canvas"
+                    );
+                    let dock = self.qa_dock.dock.unwrap();
+                    assert!(ctx.content_rect().contains_rect(dock));
+                    self.notify("플로팅 UI 검증: 작업 영역 유지 · 응답/입력 스크롤 · 접기/펼치기");
+                }
+            }
             if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("decision-settings")
                 && ctx.cumulative_frame_nr() == 10
             {
@@ -3416,6 +3618,7 @@ impl eframe::App for Studio {
             }
             let connection_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
             let connection_flow = connection_view.starts_with("connections-");
+            let floating_flow = connection_view.starts_with("ai-floating");
             let connection_ready = connection_flow
                 && ctx.cumulative_frame_nr() >= 12
                 && self.connections_pending.is_none();
@@ -3442,7 +3645,9 @@ impl eframe::App for Studio {
             if (ctx.cumulative_frame_nr() == 12
                 && !install_flow
                 && !candidate_live
-                && !connection_flow)
+                && !connection_flow
+                && !floating_flow)
+                || (floating_flow && ctx.cumulative_frame_nr() == 36)
                 || connection_ready
                 || (candidate_live
                     && ctx.cumulative_frame_nr() > 12
@@ -3509,27 +3714,6 @@ impl eframe::App for Studio {
         }
         self.top(ctx);
         self.footer(ctx);
-        if self.ai_ready() {
-            egui::TopBottomPanel::bottom("ai-space")
-                .exact_height(
-                    (if self.ai_answer.is_empty() {
-                        112.
-                    } else {
-                        252.
-                    }) + if self
-                        .project
-                        .glyphs
-                        .get(self.selected)
-                        .is_some_and(|g| !g.candidates.is_empty())
-                    {
-                        40.
-                    } else {
-                        0.
-                    },
-                )
-                .frame(egui::Frame::new().fill(PAPER))
-                .show(ctx, |_| {});
-        }
         if self.tab == 0 {
             self.library(ctx);
             self.properties(ctx);

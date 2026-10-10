@@ -1,4 +1,4 @@
-param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly)
+param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly, [switch]$FloatingOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
@@ -11,6 +11,8 @@ if ($LocalAi) { $views += 'ai-candidate-live','ai-typography-live' }
 if ($DecisionAi) { $views += 'decision-fast-live','decision-gemma-live' }
 if ($ConnectionsOnly) { $views = @() }
 $views += 'connections-write','connections-restored','connections-delete','connections-empty'
+if (-not $ConnectionsOnly) { $views += 'ai-floating','ai-floating-small' }
+if ($FloatingOnly) { $views = @('ai-floating','ai-floating-small','ai-busy','ai-recover','ai-candidate-accept') }
 foreach ($viewName in $views) {
     $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-$viewName"
     if ($viewName.StartsWith('connections-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-connections" }
@@ -21,8 +23,10 @@ foreach ($viewName in $views) {
     if (-not (Test-Path -LiteralPath $env:DOODLE_QA_OUTPUT)) { throw "Screenshot missing: $viewName" }
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
-Write-Output "Native UI QA passed: $($views.Count) scenarios, including API key entry, automatic encryption, process restart, key deletion, and restart after deletion."
-if (-not $ConnectionsOnly) {
+Write-Output "Native UI QA passed: $($views.Count) scenarios."
+if (-not $FloatingOnly) { Write-Output 'API key entry, automatic encryption, process restart, key deletion, and restart after deletion passed.' }
+if (-not $ConnectionsOnly -and -not $FloatingOnly) {
     Write-Output 'Drawing, AI candidate review/apply, invalid responses, undo/redo, original preservation, and disk save also passed.'
     Write-Output 'Mock candidates verify UI behavior only. Live candidate screenshots also require a separate visual check of the requested glyph and style.'
 }
+if (-not $ConnectionsOnly) { Write-Output 'Floating dock preserves canvas size. Long responses and prompts scroll independently; collapse/expand and busy locking passed.' }
