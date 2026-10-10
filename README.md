@@ -4,6 +4,8 @@
 
 ## 실행
 
+[최신 릴리스](https://github.com/pnpcrow/doodle-font/releases/latest)에서 Windows x64 ZIP을 내려받아 압축을 풀고 `Doodle-Font.exe`를 실행하세요. [0.1.0 릴리스 안내](docs/releases/0.1.0.md)에서 주요 기능과 배포 파일을 확인할 수 있습니다.
+
 `release/Doodle-Font.exe`를 실행합니다. 설치 없이 사용할 수 있습니다. Windows 10/11 x64와 OpenGL을 지원하는 그래픽 드라이버가 필요합니다.
 
 작업은 `%LOCALAPPDATA%/DoodleFont/project.json`에 자동 저장됩니다. 이전 저장은 `project.backup.json`에 남습니다. 상단 **프로젝트 → 프로젝트 사본 저장**은 템플릿 원본·기준 버전·후보·이미지를 포함한 JSON 사본을 만듭니다. **새 프로젝트**를 누르면 기존 프로젝트를 `projects/`에 보관하고 새 프로젝트를 시작합니다. **열기…**로 사본과 백업을 다시 열 수 있습니다.
