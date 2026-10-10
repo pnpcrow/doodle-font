@@ -23,7 +23,7 @@ elseif (-not $ConnectionsOnly -and -not $FloatingOnly) { $views += $exportViews 
 if ($UsabilityOnly) { $views = @('theme-light','theme-light-small','theme-dark-small','appearance-write','appearance-restored','preview','templates','ai-busy') }
 if ($CompanionOnly) { $views = $rendererViews }
 if ($SettingsOnly) { $views = @('settings-off','settings-local','settings-api','settings-api-small','settings-api-expanded-small','settings-api-test','settings-api-error','settings-generation','settings-disable','settings-needle-auto','settings-local-auto','connections-write','connections-restored','connections-delete','connections-empty','settings-project','settings-dock-collapsed','settings-dock-transition') }
-$layoutViews = @('layout-window','layout-project','layout-project-small','layout-tabs','layout-templates-light','layout-templates-dark-small','layout-sidebar','layout-sidebar-small','layout-sidebar-reduced','layout-companion-small')
+$layoutViews = @('layout-window','layout-corners','layout-corners-fallback','layout-project','layout-project-small','layout-tabs','layout-templates-light','layout-templates-dark-small','layout-sidebar','layout-sidebar-small','layout-sidebar-reduced','layout-companion-small')
 if ($LayoutOnly) { $views = $layoutViews }
 elseif (-not ($ConnectionsOnly -or $FloatingOnly -or $ExportOnly -or $UsabilityOnly -or $CompanionOnly -or $SettingsOnly)) { $views += $layoutViews }
 foreach ($viewName in $views) {
@@ -58,7 +58,7 @@ foreach ($viewName in $views) {
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
 Write-Output "Native UI QA passed: $($views.Count) scenarios."
-if ($LayoutOnly) { Write-Output 'Native chromeless maximize/restore/close, exit autosave, project editing, tabs, template cards, animated sidebars, and companion context menu passed.'; return }
+if ($LayoutOnly) { Write-Output 'Native window corners (DWM and fallback), maximize/fullscreen/restore/resize/close, exit autosave, project editing, tabs, template cards, animated sidebars, and companion context menu passed.'; return }
 if ($SettingsOnly) { Write-Output 'Compact settings, API test success/error, separate generation window, disabled AI, isolated automatic installs, and saved credentials passed.'; return }
 if ($CompanionOnly) { Write-Output 'Side-by-side comparison, selection, process restart, switching back, and small-window bounds passed.'; return }
 if ($UsabilityOnly) { Write-Output 'Theme switching, preference restart, small windows, themed previews, and the busy companion passed.'; return }

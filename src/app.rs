@@ -49,6 +49,8 @@ enum Job {
     Imported(Project),
 }
 pub struct Studio {
+    #[cfg(windows)]
+    window_corners: crate::native_window::Corners,
     companion: doodle_core::companion::Companion,
     companion_comparison: Option<doodle_core::companion_compare::Comparison>,
     preferences: Preferences,
@@ -226,6 +228,8 @@ impl Studio {
             (new_project(), String::new())
         };
         let mut s = Self {
+            #[cfg(windows)]
+            window_corners: crate::native_window::Corners::new(cc),
             companion: doodle_core::companion::Companion::with_renderer(
                 ctx,
                 preferences.companion_renderer,
@@ -4227,7 +4231,11 @@ impl eframe::App for Studio {
             }
         }
     }
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(windows)]
+        self.window_corners.sync(ctx, _frame);
+        #[cfg(all(windows, feature = "ui-qa"))]
+        self.window_corners_qa(ctx, _frame);
         if ctx.input(|i| i.viewport().close_requested())
             && self.ai_cancel.is_some()
             && self.job.is_some()

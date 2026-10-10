@@ -1,5 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod app;
+#[cfg(windows)]
+mod native_window;
 fn main() -> eframe::Result {
     let icon = image::load_from_memory(include_bytes!("../assets/icon.ico"))
         .expect("app icon")

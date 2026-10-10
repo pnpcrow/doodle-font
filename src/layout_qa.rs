@@ -38,6 +38,49 @@ fn project_names(view: &str) -> (&'static str, &'static str) {
     }
 }
 impl Studio {
+    #[cfg(windows)]
+    pub(super) fn window_corners_qa(&mut self, ctx: &egui::Context, window: &eframe::Frame) {
+        let view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if !view.starts_with("layout-corners") {
+            return;
+        }
+        let frame = ctx.cumulative_frame_nr();
+        let command = match frame {
+            3 => Some(egui::ViewportCommand::Maximized(true)),
+            11 => Some(egui::ViewportCommand::Maximized(false)),
+            19 => Some(egui::ViewportCommand::Fullscreen(true)),
+            27 => Some(egui::ViewportCommand::Fullscreen(false)),
+            35 => Some(egui::ViewportCommand::InnerSize(Vec2::new(1180., 800.))),
+            _ => None,
+        };
+        if let Some(command) = command {
+            ctx.send_viewport_cmd(command);
+        }
+        if [2, 10, 18, 26, 34, 42].contains(&frame) {
+            let (maximized, fullscreen) = ctx.input(|i| {
+                (
+                    i.viewport().maximized.unwrap_or(false),
+                    i.viewport().fullscreen.unwrap_or(false),
+                )
+            });
+            assert_eq!(maximized, frame == 10, "native maximize/restore at {frame}");
+            assert_eq!(
+                fullscreen,
+                frame == 26,
+                "native fullscreen/restore at {frame}"
+            );
+            self.window_corners
+                .assert_applied(window, !maximized && !fullscreen);
+            if frame == 42 {
+                let size = ctx.content_rect().size();
+                assert!(
+                    (size - Vec2::new(1180., 800.)).length() < 2.,
+                    "native resize: {size:?}"
+                );
+            }
+            println!("Window corners verified: {view}, frame {frame}, maximized={maximized}, fullscreen={fullscreen}");
+        }
+    }
     pub(super) fn layout_qa_setup(&mut self, ctx: &egui::Context, view: &str) {
         if !view.starts_with("layout-") {
             return;
@@ -67,7 +110,7 @@ impl Studio {
         if view == "layout-companion-small" {
             self.api_provider = "local".into();
         }
-        if view == "layout-window" {
+        if view == "layout-window" || view.starts_with("layout-corners") {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1120., 760.)));
         }
     }
