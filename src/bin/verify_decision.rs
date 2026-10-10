@@ -39,11 +39,24 @@ fn main() {
             result.candidate.is_some(),
             start.elapsed().as_secs_f64()
         );
-        evidence.push(json!({"prompt":prompt,"seconds":start.elapsed().as_secs_f64(),"raw":raw.as_ref().ok(),"error":raw.as_ref().err(),"quick":result.candidate.is_some(),"note":result.note}));
+        let hint = ai_pipeline::animation_hint(&payload, raw.as_ref().ok());
+        println!("  motion={hint:?}");
+        evidence.push(json!({"prompt":prompt,"seconds":start.elapsed().as_secs_f64(),"raw":raw.as_ref().ok(),"error":raw.as_ref().err(),"quick":result.candidate.is_some(),"note":result.note,"motion":format!("{hint:?}")}));
     }
-    let (tx, _rx) = mpsc::channel();
+    let (tx, rx) = mpsc::channel();
     let result=ai_pipeline::run(json!({"glyph":document::new_project().glyphs[0],"action":"generate","decision":"needle","prompt":"Set the stroke width to 70.","colorMode":"color","config":{"provider":"openai","endpoint":"http://127.0.0.1:1/v1","model":"unreachable"}}),Arc::new(AtomicBool::new(false)),tx).expect("fast edit must skip unavailable external API");
     assert_eq!(result["artwork"]["shapes"][0]["stroke"], 70.);
+    let progress = rx.try_iter().collect::<Vec<_>>();
+    assert!(
+        progress.contains(&doodle_core::ai_progress::Progress::Animation(
+            doodle_core::companion::Mood::Thinking
+        ))
+    );
+    assert!(
+        progress.contains(&doodle_core::ai_progress::Progress::Animation(
+            doodle_core::companion::Mood::Drawing
+        ))
+    );
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = cancel.clone();
     let worker = std::thread::spawn(move || {

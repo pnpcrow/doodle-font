@@ -166,6 +166,12 @@ fn morphed_mesh_and_face_stay_inside_the_companion_slot() {
                 pet.paint(&ctx.debug_painter(), rect, pose)
             });
             for shape in out.shapes {
+                if let egui::Shape::Path(path) = &shape.shape {
+                    assert!(
+                        path.points.iter().all(|p| rect.contains(*p)),
+                        "eye escaped {mood:?}"
+                    );
+                }
                 if let egui::Shape::Mesh(mesh) = shape.shape {
                     assert!(mesh.vertices.iter().all(|v| v.pos.is_finite()));
                     // Include the curl, not just the pale body; only transparent margins may escape.

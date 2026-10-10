@@ -7,6 +7,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 $runId = [guid]::NewGuid().ToString()
 $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId"
 $views = @('theme-light','theme-light-small','theme-dark-small','appearance-write','appearance-restored','editor','preview','templates','settings','export','hangul','ai-ready','ai-busy','ai-recover','interaction','ai-candidates','ai-candidate-accept','ai-candidate-invalid','ai-typography','ai-layout','decision-settings')
+$views += 'companion-inspecting','companion-drawing','companion-coloring','companion-explaining'
 if ($LocalAi) { $views += 'ai-candidate-live','ai-typography-live' }
 if ($DecisionAi) { $views += 'decision-fast-live','decision-gemma-live' }
 if ($ConnectionsOnly) { $views = @() }
