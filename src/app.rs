@@ -3315,7 +3315,12 @@ impl Studio {
             self.changed();
         }
         ui.add_space(10.);
-        chip(ui, &format!("자동 저장 위치: {}", self.save_path.display()));
+        chip(ui, "자동 저장 위치");
+        let path = self.save_path.display().to_string();
+        ui.add(
+            egui::Label::new(RichText::new(&path).size(12.).color(self.palette.muted)).truncate(),
+        )
+        .on_hover_text(path);
         if self.save_error && ui.button("자동 저장 다시 시도").clicked() {
             self.save_error = false;
             self.save();
