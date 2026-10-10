@@ -2183,6 +2183,16 @@ impl Studio {
                 });
             });
             ui.label("그림을 비교하고 채택해 주세요. 채택 전에는 현재 그림이 바뀌지 않습니다.");
+            #[cfg(feature = "ui-qa")]
+            match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
+                "ai-candidates" | "ai-candidate-accept" | "ai-typography" => {
+                    ui.label("화면 동작 검증용 모의 후보 · 실제 AI 생성 결과가 아닙니다.");
+                }
+                "ai-candidate-live" | "ai-typography-live" => {
+                    ui.label("실제 내장 AI 생성 결과 · 글자 정확도는 별도로 확인합니다.");
+                }
+                _ => {}
+            }
             egui::ScrollArea::horizontal()
                 .id_salt("candidate-choices")
                 .show(ui, |ui| {
@@ -2888,6 +2898,9 @@ impl eframe::App for Studio {
                     "ai-candidates" | "ai-candidate-accept" | "ai-candidate-invalid" => {
                         self.tab = 3;
                         self.local_installed = true;
+                        self.ai_action = true;
+                        self.ai_prompt =
+                            "현재 A의 모양을 유지하고 획 굵기를 70으로 통일해 줘.".into();
                         let (tx, rx) = mpsc::channel();
                         self.job = Some(rx);
                         self.ai_cancel = Some(std::sync::Arc::new(
@@ -2898,7 +2911,13 @@ impl eframe::App for Studio {
                         let result = if invalid {
                             serde_json::json!({"answer":"설명만 반환된 응답"})
                         } else {
-                            serde_json::json!({"artwork":self.project.glyphs[1].artwork})
+                            // This fixture tests delivery and review, not AI accuracy.
+                            // Keep the target letter instead of borrowing the smiley glyph.
+                            let mut artwork = self.project.glyphs[0].artwork.clone();
+                            for shape in &mut artwork.shapes {
+                                shape.stroke = 70.;
+                            }
+                            serde_json::json!({"artwork":artwork})
                         };
                         tx.send(Ok(Job::AiReply(
                             self.project.glyphs[0].id.clone(),
@@ -3002,11 +3021,21 @@ impl eframe::App for Studio {
                 );
                 self.undo(false);
                 assert_eq!(self.project.glyphs[0].artwork.shapes.len(), 2);
+                assert!(self.project.glyphs[0]
+                    .artwork
+                    .shapes
+                    .iter()
+                    .all(|shape| shape.stroke == 36.));
                 self.undo(true);
                 assert_eq!(
-                    self.project.glyphs[0].artwork.shapes.len(),
-                    self.project.glyphs[1].artwork.shapes.len()
+                    serde_json::to_value(&self.project.glyphs[0].artwork).unwrap(),
+                    serde_json::to_value(&self.project.glyphs[0].candidates[0].artwork).unwrap()
                 );
+                assert!(self.project.glyphs[0]
+                    .artwork
+                    .shapes
+                    .iter()
+                    .all(|shape| shape.stroke == 70.));
                 self.save();
                 assert_eq!(
                     storage::read(&self.save_path).unwrap().glyphs[0]

@@ -18,3 +18,4 @@ foreach ($viewName in $views) {
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
 Write-Output 'Native UI QA passed, including drawing, AI candidate review/apply, invalid responses, undo/redo, original preservation, and disk save.'
+Write-Output 'Mock candidates verify UI behavior only. Live candidate screenshots also require a separate visual check of the requested glyph and style.'
