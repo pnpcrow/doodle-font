@@ -27,6 +27,10 @@ struct DockQa {
     prompt: Option<Rect>,
     prompt_offset: f32,
     collapse: Option<Rect>,
+    companion: Option<Rect>,
+    companion_baseline: Option<Rect>,
+    footer: Option<Rect>,
+    footer_spinner: Option<Rect>,
 }
 enum Job {
     Export(font::ExportResult, Option<PathBuf>),
@@ -874,7 +878,7 @@ impl Studio {
             });
     }
     fn footer(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("footer")
+        let footer = egui::TopBottomPanel::bottom("footer")
             .exact_height(32.)
             .frame(
                 egui::Frame::new()
@@ -882,6 +886,13 @@ impl Studio {
                     .inner_margin(egui::Margin::symmetric(20, 6)),
             )
             .show(ctx, |ui| {
+                // The footer has 20 points of inner height; the regular controls are 32.
+                ui.spacing_mut().interact_size.y = 20.;
+                ui.spacing_mut().button_padding.y = 1.;
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_dock.footer_spinner = None;
+                }
                 if self.ai_cancel.is_some() {
                     ui.disable();
                 }
@@ -909,13 +920,23 @@ impl Studio {
                             self.help = true;
                         }
                         ui.small("두들 폰트 0.1.0");
-                        if self.job.is_some() {
-                            ui.spinner();
+                        if self.job.is_some() || self.ai_cancel.is_some() {
+                            let spinner = ui.add(egui::Spinner::new().size(14.));
+                            #[cfg(feature = "ui-qa")]
+                            {
+                                self.qa_dock.footer_spinner = Some(spinner.rect);
+                            }
+                            let _ = spinner;
                             ui.small("처리 중");
                         }
                     });
                 });
             });
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_dock.footer = Some(footer.response.rect);
+        }
+        let _ = footer;
     }
     fn library(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("glyphs")
@@ -2534,24 +2555,36 @@ impl Studio {
                 spread: 2,
                 color: Color32::from_black_alpha(30),
             });
+        let view = ctx.content_rect();
+        let companion_size = (view.width() * 0.14).clamp(160., 192.);
+        let gap = 14.;
+        let card_width = (view.width() - companion_size - gap - 80.).min(700.);
+        let card_outer_width = card_width + frame.total_margin().sum().x;
+        let companion_offset = Vec2::new(-(card_outer_width + gap) / 2., -44.);
+        let companion_rect = Rect::from_min_size(
+            Pos2::new(
+                view.center().x + companion_offset.x - companion_size / 2.,
+                view.bottom() + companion_offset.y - companion_size,
+            ),
+            Vec2::splat(companion_size),
+        );
         let area = egui::Area::new("ai-dock".into())
-            .anchor(Align2::CENTER_BOTTOM, [0., -44.])
+            .anchor(Align2::CENTER_BOTTOM, [(companion_size + gap) / 2., -44.])
             .order(egui::Order::Foreground);
         if let Some(cancel) = self.ai_cancel.clone() {
-            egui::Modal::new("ai-busy".into())
+            let dock = egui::Modal::new("ai-busy".into())
                 .area(area)
                 .frame(frame)
                 .backdrop_color(Color32::from_black_alpha(35))
                 .show(ctx, |ui| {
-                    ui.set_width((ctx.content_rect().width() - 100.).min(700.));
+                    ui.set_width(card_width);
                     if !self.companion.motion.mood.working() {
                         self.companion
                             .motion
                             .react(doodle_core::companion::Mood::Thinking);
                     }
                     ui.horizontal(|ui| {
-                        self.companion.show(ui, 64., self.preferences.reduce_motion);
-                        ui.spinner();
+                        ui.add(egui::Spinner::new().size(20.));
                         ui.label(RichText::new(&self.ai_status).strong());
                         ui.label(format!("{}초", self.ai_started.elapsed().as_secs()));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2580,13 +2613,36 @@ impl Studio {
                         .color(self.palette.muted),
                     );
                 });
+            // Use the modal's paint layer so its backdrop cannot dim the companion.
+            // The character is display-only here; the existing modal keeps editing locked.
+            let pointer = ctx.pointer_hover_pos().map_or(Vec2::ZERO, |p| {
+                (p - companion_rect.center())
+                    / Vec2::new(
+                        (view.width() * 0.55).max(180.),
+                        (view.height() * 0.75).max(180.),
+                    )
+            });
+            let pose = self.companion.motion.step(
+                ctx.input(|i| i.time),
+                pointer,
+                self.preferences.reduce_motion,
+            );
+            self.companion.paint(
+                &ctx.layer_painter(dock.response.layer_id),
+                companion_rect,
+                pose,
+            );
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_dock.dock = Some(dock.response.rect);
+                self.qa_dock.companion = Some(companion_rect);
+            }
         } else {
             let dock = area.show(ctx, |ui| {
                 frame.show(ui, |ui| {
-                    ui.set_width((ctx.content_rect().width() - 100.).min(700.));
+                    ui.set_width(card_width);
                     ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
                     ui.horizontal(|ui| {
-                        self.companion.show(ui, if self.ai_dock_collapsed { 48. } else { 64. }, self.preferences.reduce_motion);
                         ui.label(
                             RichText::new("두들 어시스트")
                                 .strong()
@@ -2740,6 +2796,21 @@ impl Studio {
                 self.qa_dock.dock = Some(dock.response.rect);
             }
             let _ = dock;
+            egui::Area::new("ai-companion".into())
+                .anchor(Align2::CENTER_BOTTOM, companion_offset)
+                .order(egui::Order::Foreground)
+                .sense(Sense::click_and_drag())
+                .movable(false)
+                .show(ctx, |ui| {
+                    let companion =
+                        self.companion
+                            .show(ui, companion_size, self.preferences.reduce_motion);
+                    #[cfg(feature = "ui-qa")]
+                    {
+                        self.qa_dock.companion = Some(companion.rect);
+                    }
+                    let _ = companion;
+                });
         }
     }
     fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
@@ -3335,6 +3406,19 @@ impl eframe::App for Studio {
                 .events
                 .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
             let frame = ctx.cumulative_frame_nr();
+            if (7..=9).contains(&frame) {
+                let rect = self.qa_dock.companion.expect("separate companion");
+                let pos = rect.center() + Vec2::new(if frame == 7 { -12. } else { 12. }, 0.);
+                input.events.push(egui::Event::PointerMoved(pos));
+                if frame != 8 {
+                    input.events.push(egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed: frame == 7,
+                        modifiers: Default::default(),
+                    });
+                }
+            }
             let scroll = match frame {
                 16 => self.qa_dock.answer,
                 22 => self.qa_dock.prompt,
@@ -3349,7 +3433,11 @@ impl eframe::App for Studio {
                 });
             }
             if (18..=20).contains(&frame) {
-                let rect = self.qa_dock.answer.unwrap();
+                let rect = self
+                    .qa_dock
+                    .answer
+                    .unwrap()
+                    .intersect(self.qa_canvas.unwrap());
                 let pos = rect.center() + Vec2::new(if frame == 18 { -10. } else { 10. }, 0.);
                 assert!(
                     self.qa_canvas.unwrap().contains(pos),
@@ -3460,8 +3548,14 @@ impl eframe::App for Studio {
             }
             return;
         }
-        if !["interaction", "ai-busy", "ai-recover"]
-            .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str())
+        if ![
+            "interaction",
+            "ai-busy",
+            "ai-busy-small",
+            "ai-busy-light",
+            "ai-recover",
+        ]
+        .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str())
         {
             return;
         }
@@ -3738,12 +3832,22 @@ impl eframe::App for Studio {
                         .unwrap();
                         self.poll();
                     }
-                    "ai-busy" | "ai-recover" => {
+                    "ai-busy" | "ai-busy-small" | "ai-busy-light" | "ai-recover" => {
                         self.local_installed = true;
                         self.ai_cancel = Some(std::sync::Arc::new(
                             std::sync::atomic::AtomicBool::new(false),
                         ));
                         self.ai_status = "프롬프트와 그림을 함께 분석 중".into();
+                        let view = std::env::var("DOODLE_QA_VIEW").unwrap();
+                        if view.ends_with("-small") {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
+                                1120., 760.,
+                            )));
+                        }
+                        if view.ends_with("-light") {
+                            self.preferences.theme = Theme::Light;
+                            ctx.set_theme(egui::Theme::Light);
+                        }
                     }
                     "export" | "export-ttf" | "export-otf" | "export-woff" | "export-woff2"
                     | "export-woff2-small" => {
@@ -3769,6 +3873,7 @@ impl eframe::App for Studio {
                 let frame = ctx.cumulative_frame_nr();
                 if frame == 4 {
                     self.qa_dock.baseline = self.qa_canvas;
+                    self.qa_dock.companion_baseline = self.qa_dock.companion;
                 }
                 if frame == 6 {
                     self.local_installed = true;
@@ -3803,6 +3908,10 @@ impl eframe::App for Studio {
                     assert!(self.ai_dock_collapsed);
                     assert!(self.qa_dock.dock.unwrap().height() < 100.);
                     assert_eq!(self.qa_canvas, self.qa_dock.baseline);
+                    assert_eq!(
+                        self.qa_dock.companion, self.qa_dock.companion_baseline,
+                        "Collapsing the prompt must not shrink or move the companion"
+                    );
                 }
                 if frame == 36 {
                     assert!(!self.ai_dock_collapsed);
@@ -3892,7 +4001,7 @@ impl eframe::App for Studio {
                 );
                 self.notify("후보 UI QA: 채택 · 실행 취소 · 다시 실행 · 저장 · 다시 열기 통과");
             }
-            if ["ai-busy", "ai-recover"]
+            if ["ai-busy", "ai-busy-small", "ai-busy-light", "ai-recover"]
                 .contains(&std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str())
                 && ctx.cumulative_frame_nr() == 8
             {
@@ -4193,7 +4302,7 @@ impl eframe::App for Studio {
         if ctx.cumulative_frame_nr() == 10 {
             use doodle_core::companion::Mood;
             let expected = match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
-                "ai-busy" => Some(Mood::Thinking),
+                "ai-busy" | "ai-busy-small" | "ai-busy-light" => Some(Mood::Thinking),
                 "companion-inspecting" => Some(Mood::Inspecting),
                 "companion-drawing" => Some(Mood::Drawing),
                 "companion-coloring" => Some(Mood::Coloring),
@@ -4204,6 +4313,34 @@ impl eframe::App for Studio {
             };
             if let Some(expected) = expected {
                 assert_eq!(self.companion.motion.mood, expected);
+            }
+        }
+        #[cfg(feature = "ui-qa")]
+        if ctx.cumulative_frame_nr() == 12 {
+            if let (Some(companion), Some(dock)) = (self.qa_dock.companion, self.qa_dock.dock) {
+                assert!(companion.width() >= 159. && companion.height() >= 159.);
+                assert!(
+                    companion.right() + 8. <= dock.left(),
+                    "companion must be beside the prompt"
+                );
+                assert!(ctx.content_rect().contains_rect(companion));
+                assert!(
+                    ctx.content_rect().contains_rect(dock),
+                    "dock {dock:?} exceeds {:?}",
+                    ctx.content_rect()
+                );
+            }
+            if let Some(spinner) = self.qa_dock.footer_spinner {
+                let footer = self.qa_dock.footer.unwrap();
+                assert!(
+                    footer.height() <= 32.1,
+                    "spinner must not grow the footer: {footer:?}"
+                );
+                assert!(
+                    footer.shrink(2.).contains_rect(spinner),
+                    "spinner escaped footer: {spinner:?} / {footer:?}"
+                );
+                assert!(spinner.width() <= 14.1 && spinner.height() <= 14.1);
             }
         }
         if !self.message.is_empty()
