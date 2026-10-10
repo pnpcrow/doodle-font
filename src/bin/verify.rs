@@ -69,6 +69,9 @@ fn main() {
         for g in &mut p.glyphs {
             g.status = "blank".into();
         }
+        // Non-consecutive IDs exercise indexed cmap format 4 segments, including
+        // glyph IDs above 32767, instead of testing only cheap sequential deltas.
+        p.glyphs.reverse();
         let model_ms = start.elapsed().as_secs_f64() * 1000.;
         let mut reports = vec![];
         for format in ["ttf", "otf", "woff", "woff2"] {

@@ -1,4 +1,16 @@
-# 검증 기록 · 2026-10-10
+# 검증 기록
+
+## Windows에서 TTF·OTF를 읽지 못하는 오류 · 2026-10-11
+
+- 기존 출력 6종(TTF·OTF × 단색·컬러·비트맵)이 Windows `AddFontMemResourceEx`와 `AddFontResourceExW`에서 모두 거부되는 것을 재현했다. 시스템 Arial은 같은 검사에서 읽혔다. 기존 Rust 파서·fontTools·브라우저 로드 성공만으로는 Windows 설치/미리보기 호환성을 확인할 수 없었으며 이 검증 범위를 보완했다.
+- 공통 원인: BMP용 cmap format 4가 없었다. Unicode 0/3 및 Windows 3/1 레코드를 추가하고 전체 유니코드용 format 12와 표시 선택자용 format 14를 유지했다. format 4의 65,535바이트 한계를 위해 델타 구간과 글리프 배열을 최소 크기로 조합하며, 표현 불가능한 경우 잘린 표 대신 분할 출력을 안내한다. 이모지만 있는 폰트에는 NUL→.notdef 매핑만 추가해 Windows CFF 로더의 비어 있지 않은 BMP 구간 요구를 만족한다. 표시 글자나 글리프 ID를 추가·변경하지 않는다.
+- OTF 고유 원인: CFF `CharstringType=2`를 긴 정수 표현으로 기록하면 Windows가 거부했다. 숫자를 표준의 짧은 정수 표현으로 기록하면 읽혔으며 오프셋 피연산자는 재배치 길이가 안정되도록 고정 길이를 유지한다. 빈 글리프만 있는 TTF는 길이 0인 glyf 테이블도 거부되어 .notdef에 빈 헤더·명령 길이 12바이트를 기록했다. 각 원인은 별도 파일 변형으로 분리 검사했다. 진단 자료는 `artifacts/font-compat-before/`에 보관한다.
+- Windows용 앱은 TTF·OTF 생성 시 실제 Windows 메모리 글꼴 로더를 호출한다. 검사 글꼴은 현재 프로세스에만 잠깐 존재하고 즉시 해제되며 시스템에 설치하지 않는다. 로드 실패 시 출력 전 검사와 저장이 오류로 끝나며 잘못된 파일을 새로 쓰지 않는다.
+- 새 회귀 검사: 희소·연속·비연속·큰 글리프 ID·BMP 경계의 매핑 왕복, format 4 길이 초과 오류, 두 Unicode 표의 일치 및 표시 선택자, Windows의 메모리/파일 로드 18조합(기본·공백만·이모지만 × TTF/OTF × 단색/컬러/비트맵). 한국어 임시 파일명도 사용한다. CFF의 65,535개 글리프 지원도 실제 Windows 로더 검사를 통과한다. ttf-parser 0.25.1의 format 4 배열에서 32768 이상의 ID를 음수로 취급하는 동작은 부호 없는 독립 디코더 및 fontTools 비교로 보완했다.
+- `verify --large`와 `scripts/verify-font-formats.py`로 일반 12개 및 대규모 4개 파일을 독립 검사했다. 단색·컬러·비트맵의 TTF/OTF 6개와 53,157개 출력 글리프의 대규모 TTF/OTF 2개는 Windows 파일·메모리 로드 모두 통과했다. 대규모 자료는 빈 글리프와 지역별 치환용이며 복잡한 그림의 처리 성능을 대신하지 않는다. 브라우저에서도 일반 TTF·OTF·WOFF·WOFF2 12개가 모두 로드됐다. 결과는 `artifacts/verification/`에 있다.
+- 대규모 자료는 글리프 순서를 뒤집어 32768 이상 ID를 가진 비연속 매핑과 format 4 글리프 배열도 검사한다. 네이티브 UI의 포맷 선택·출력 전 검사·작은 창 5개 시나리오 및 모든 대상·UI QA 기능을 포함한 clippy 경고 검사를 통과했다.
+- 전체 자동 테스트 **88개**를 통과하고 `scripts/package.ps1`로 **0.1.0** 배포용 실행 파일과 SHA256을 갱신했다.
+- 참고 규격: [Microsoft cmap](https://learn.microsoft.com/en-us/typography/opentype/spec/cmap), [Adobe CFF](https://adobe-type-tools.github.io/font-tech-notes/pdfs/5176.CFF.pdf), [Windows 메모리 글꼴 로더](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-addfontmemresourceex). 앱 버전은 **0.1.0**을 유지한다. 이전 출력 파일은 프로젝트에서 다시 내보내야 한다.
 
 ## AI 후보의 자연스러운 비율과 좌우 균형
 

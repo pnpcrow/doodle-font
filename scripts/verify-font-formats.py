@@ -8,8 +8,39 @@ from fontTools.pens.basePen import NullPen
 import struct
 import base64
 import json
+import sys
 
 ROOT = Path(__file__).resolve().parent.parent / "artifacts" / "verification"
+
+
+def windows_load(path):
+    """Use the real Windows memory and file loaders, without installing any font."""
+    if sys.platform != "win32":
+        return
+    import ctypes as c
+    from ctypes import wintypes as w
+    gdi = c.WinDLL("gdi32")
+    gdi.AddFontMemResourceEx.argtypes = [c.c_void_p, w.DWORD, c.c_void_p, c.POINTER(w.DWORD)]
+    gdi.AddFontMemResourceEx.restype = w.HANDLE
+    gdi.RemoveFontMemResourceEx.argtypes = [w.HANDLE]
+    gdi.RemoveFontMemResourceEx.restype = w.BOOL
+    gdi.AddFontResourceExW.argtypes = [w.LPCWSTR, w.DWORD, c.c_void_p]
+    gdi.AddFontResourceExW.restype = c.c_int
+    gdi.RemoveFontResourceExW.argtypes = [w.LPCWSTR, w.DWORD, c.c_void_p]
+    gdi.RemoveFontResourceExW.restype = w.BOOL
+    data = path.read_bytes()
+    buffer = c.create_string_buffer(data)
+    count = w.DWORD()
+    handle = gdi.AddFontMemResourceEx(buffer, len(data), None, c.byref(count))
+    assert handle, f"Windows rejected font bytes: {path.name}"
+    try:
+        assert count.value > 0, path.name
+    finally:
+        assert gdi.RemoveFontMemResourceEx(handle)
+    name = str(path.resolve())
+    loaded = gdi.AddFontResourceExW(name, 0x10, None)  # FR_PRIVATE
+    assert loaded > 0, f"Windows rejected font file: {path.name}"
+    assert gdi.RemoveFontResourceExW(name, 0x10, None)
 
 
 def raw(font, tag):
@@ -24,6 +55,13 @@ def verify(stem):
                 font.ensureDecompiled(recurse=True)
                 assert font["maxp"].numGlyphs == reference["maxp"].numGlyphs
                 assert font.getBestCmap().keys() == reference.getBestCmap().keys()
+                bmp = font["cmap"].getcmap(3, 1)
+                full = font["cmap"].getcmap(3, 10)
+                assert bmp is not None and bmp.format == 4
+                assert full is not None and full.format == 12
+                expected = {cp: name for cp, name in full.cmap.items()
+                            if cp < 0xffff and font.getGlyphID(name) != 0}
+                assert bmp.cmap == expected, (path.name, "BMP/full-Unicode mismatch")
                 for tag in reference.reader.keys():
                     if tag in ("head", "glyf", "loca", "maxp") and extension == "otf":
                         continue
@@ -51,6 +89,8 @@ def verify(stem):
                 font.save(target)
                 with TTFont(target, checkChecksums=2) as decoded:
                     decoded.ensureDecompiled(recurse=True)
+                if extension in ("ttf", "otf"):
+                    windows_load(path)
                 print(f"PASS {path.name}: {path.stat().st_size:,} bytes / {font['maxp'].numGlyphs:,} glyphs")
 
 
