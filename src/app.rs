@@ -1,5 +1,11 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
-use doodle_core::{document::*, font, model::*, storage};
+use doodle_core::{
+    appearance::{self, Palette, Preferences, Theme},
+    document::*,
+    font,
+    model::*,
+    storage,
+};
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 use std::{
     collections::HashMap,
@@ -7,11 +13,8 @@ use std::{
     sync::mpsc,
     time::{Duration, Instant},
 };
-const INK: Color32 = Color32::from_rgb(48, 51, 46);
-const MUTED: Color32 = Color32::from_rgb(133, 135, 124);
-const ACCENT: Color32 = Color32::from_rgb(211, 102, 65);
-const PAPER: Color32 = Color32::from_rgb(249, 248, 243);
-const LINE: Color32 = Color32::from_rgb(226, 227, 217);
+const DRAW_INK: Color32 = Color32::from_rgb(48, 51, 46);
+
 type JobResult = Result<Job, String>;
 
 #[cfg(feature = "ui-qa")]
@@ -33,6 +36,10 @@ enum Job {
     Imported(Project),
 }
 pub struct Studio {
+    companion: doodle_core::companion::Companion,
+    preferences: Preferences,
+    palette: Palette,
+    show_properties: bool,
     project: Project,
     index: HashMap<(String, String), usize>,
     selected: usize,
@@ -125,6 +132,8 @@ pub struct Studio {
     #[cfg(feature = "ui-qa")]
     qa_canvas: Option<Rect>,
     #[cfg(feature = "ui-qa")]
+    qa_themes: [Option<Rect>; 3],
+    #[cfg(feature = "ui-qa")]
     qa_install_button: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_candidate_accept: Option<Rect>,
@@ -161,36 +170,14 @@ impl Studio {
             }
         }
         ctx.set_fonts(fonts);
-        let mut style = (*ctx.style()).clone();
-        style.visuals = egui::Visuals::light();
-        style.visuals.panel_fill = PAPER;
-        style.visuals.window_fill = PAPER;
-        style.visuals.override_text_color = Some(INK);
-        style.visuals.selection.bg_fill = Color32::from_rgb(248, 220, 202);
-        style.visuals.selection.stroke = Stroke::new(1_f32, ACCENT);
-        style.visuals.widgets.inactive.bg_fill = Color32::from_rgb(238, 239, 232);
-        style.visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(240, 240, 234);
-        style.visuals.widgets.inactive.bg_stroke = Stroke::new(1_f32, LINE);
-        style.visuals.widgets.hovered.bg_fill = Color32::from_rgb(242, 223, 208);
-        style.visuals.widgets.active.bg_fill = Color32::from_rgb(239, 200, 174);
-        style.spacing.item_spacing = Vec2::new(9., 9.);
-        style.spacing.button_padding = Vec2::new(12., 7.);
-        style
-            .text_styles
-            .insert(egui::TextStyle::Body, FontId::proportional(15.));
-        style
-            .text_styles
-            .insert(egui::TextStyle::Button, FontId::proportional(14.));
-        style
-            .text_styles
-            .insert(egui::TextStyle::Small, FontId::proportional(12.));
-        ctx.set_style(style);
         let root = std::env::var_os("DOODLE_DATA_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
                 PathBuf::from(std::env::var_os("LOCALAPPDATA").unwrap_or_default())
                     .join("DoodleFont")
             });
+        let preferences = Preferences::load(&root.join("appearance.json"));
+        appearance::install(ctx, preferences.theme);
         let save_path = root.join("project.json");
         let connections_path = root.join("ai-connections.dat");
         let (connections, connections_status, connections_error) =
@@ -206,6 +193,10 @@ impl Studio {
             (new_project(), String::new())
         };
         let mut s = Self {
+            companion: doodle_core::companion::Companion::new(ctx),
+            preferences,
+            palette: Palette::of(ctx),
+            show_properties: false,
             project,
             index: HashMap::new(),
             selected: 0,
@@ -216,7 +207,7 @@ impl Studio {
             only_done: false,
             tab: 0,
             tool: 0,
-            color: INK,
+            color: DRAW_INK,
             width: 36.,
             fill: false,
             guides: true,
@@ -264,7 +255,7 @@ impl Studio {
             connections_pending: None,
             connections_status,
             connections_error,
-            ai_prompt: "동글동글하고 따뜻한 손글씨. 부드러운 획.".into(),
+            ai_prompt: String::new(),
             send_reference: false,
             ai_color: true,
             ai_action: false,
@@ -298,6 +289,8 @@ impl Studio {
             variant_targets: Default::default(),
             #[cfg(feature = "ui-qa")]
             qa_canvas: None,
+            #[cfg(feature = "ui-qa")]
+            qa_themes: [None; 3],
             #[cfg(feature = "ui-qa")]
             qa_install_button: None,
             #[cfg(feature = "ui-qa")]
@@ -498,6 +491,9 @@ impl Studio {
                         .is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed));
                     self.ai_progress = None;
                     if cancelled {
+                        self.companion
+                            .motion
+                            .react(doodle_core::companion::Mood::Idle);
                         if was_installing {
                             self.install_error =
                                 "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다."
@@ -512,6 +508,9 @@ impl Studio {
                     }
                     match result {
                         Err(e) => {
+                            self.companion
+                                .motion
+                                .react(doodle_core::companion::Mood::NeedsHelp);
                             if was_installing {
                                 self.install_error = e.clone();
                             } else if was_ai {
@@ -520,6 +519,9 @@ impl Studio {
                             self.notify(e)
                         }
                         Ok(Job::AiInstalled(package)) => {
+                            self.companion
+                                .motion
+                                .react(doodle_core::companion::Mood::Done);
                             self.local_installed = doodle_core::local_ai::installed();
                             self.needle_installed = doodle_core::needle::installed();
                             self.install_error.clear();
@@ -528,6 +530,9 @@ impl Studio {
                             } else { "Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요." });
                         }
                         Ok(Job::AiReply(id, drawing, result)) => {
+                            self.companion
+                                .motion
+                                .react(doodle_core::companion::Mood::Done);
                             match self.receive_ai_reply(&id, drawing, result) {
                                 Ok(()) => self.notify(if drawing {
                                     "그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요."
@@ -535,6 +540,9 @@ impl Studio {
                                     "그림 상담을 마쳤어요."
                                 }),
                                 Err(e) => {
+                                    self.companion
+                                        .motion
+                                        .react(doodle_core::companion::Mood::NeedsHelp);
                                     self.ai_answer = format!(
                                         "{}\n{e}",
                                         if drawing {
@@ -589,7 +597,15 @@ impl Studio {
                     }
                 }
                 Err(mpsc::TryRecvError::Disconnected) => {
+                    if self.ai_cancel.is_some() {
+                        self.companion
+                            .motion
+                            .react(doodle_core::companion::Mood::NeedsHelp);
+                    }
                     if self.ai_cancel.is_some() && !self.installing_ai {
+                        self.companion
+                            .motion
+                            .react(doodle_core::companion::Mood::NeedsHelp);
                         self.ai_answer = "AI 작업이 중단되었어요. 다시 요청해 주세요.".into();
                     }
                     self.job = None;
@@ -710,42 +726,74 @@ impl Studio {
             Err(e) => self.notify(e),
         }
     }
+    fn appearance_options(&mut self, ui: &mut egui::Ui) {
+        let old = self.preferences.clone();
+        ui.label("화면 테마");
+        ui.horizontal(|ui| {
+            for (index, theme) in [Theme::System, Theme::Light, Theme::Dark]
+                .into_iter()
+                .enumerate()
+            {
+                let response =
+                    ui.selectable_value(&mut self.preferences.theme, theme, theme.label());
+                #[cfg(feature = "ui-qa")]
+                {
+                    self.qa_themes[index] = Some(response.rect);
+                }
+                let _ = (index, response);
+            }
+        });
+        ui.checkbox(
+            &mut self.preferences.reduce_motion,
+            "컴패니언 움직임 줄이기",
+        );
+        if old != self.preferences {
+            ui.ctx().set_theme(self.preferences.theme.preference());
+            self.palette = Palette::of(ui.ctx());
+            if let Err(e) = self
+                .preferences
+                .save(&self.save_path.with_file_name("appearance.json"))
+            {
+                self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
+            }
+        }
+    }
     fn top(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("header")
-            .exact_height(86.)
+        egui::TopBottomPanel::top("top")
+            .exact_height(64.)
             .frame(
                 egui::Frame::new()
-                    .fill(PAPER)
-                    .inner_margin(egui::Margin::symmetric(24, 14)),
+                    .fill(self.palette.surface)
+                    .inner_margin(egui::Margin::symmetric(20, 12)),
             )
             .show(ctx, |ui| {
                 if self.ai_cancel.is_some() {
                     ui.disable();
                 }
                 ui.horizontal(|ui| {
-                    let (logo, _) = ui.allocate_exact_size(Vec2::splat(46.), Sense::hover());
-                    ui.painter().rect_filled(logo, 14., ACCENT);
+                    let (logo, _) = ui.allocate_exact_size(Vec2::splat(36.), Sense::hover());
+                    ui.painter()
+                        .rect_filled(logo, 11., Color32::from_rgb(190, 83, 51));
                     ui.painter().text(
                         logo.center(),
                         Align2::CENTER_CENTER,
                         "d",
-                        FontId::proportional(37.),
+                        FontId::proportional(30.),
                         Color32::WHITE,
                     );
-                    ui.vertical(|ui| {
-                        ui.label(RichText::new("Doodle Font").size(23.).strong());
-                        ui.label(
-                            RichText::new("나만의 글자를 그리는 작업실")
-                                .size(11.)
-                                .color(MUTED),
-                        );
-                    });
-                    ui.add_space(28.);
-                    for (i, label) in ["글리프 작업실", "문장 미리보기", "템플릿 보관함", "AI 연결"]
+                    ui.label(RichText::new("Doodle Font").size(19.).strong());
+                    ui.add_space(16.);
+                    for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
                         .iter()
                         .enumerate()
                     {
-                        if ui.selectable_label(self.tab == i, *label).clicked() {
+                        if ui
+                            .add_sized(
+                                [if i == 1 { 100. } else { 66. }, 34.],
+                                egui::Button::new(*label).selected(self.tab == i),
+                            )
+                            .clicked()
+                        {
                             self.tab = i;
                         }
                     }
@@ -753,23 +801,29 @@ impl Studio {
                         if ui
                             .add(
                                 egui::Button::new(
-                                    RichText::new("폰트 내보내기  ↗").color(Color32::WHITE),
+                                    RichText::new("폰트 내보내기 ↗").color(Color32::WHITE),
                                 )
-                                .fill(ACCENT),
+                                .fill(Color32::from_rgb(190, 83, 51)),
                             )
                             .clicked()
                         {
                             self.export_open = true;
                         }
-                        if ui.button("프로젝트 저장").clicked() {
-                            self.save_copy()
-                        }
-                        if ui.button("열기").clicked() {
-                            self.open_project(ctx)
-                        }
-                        if ui.button("새로").clicked() {
-                            self.fresh_project();
-                        }
+                        ui.menu_button("프로젝트", |ui| {
+                            if ui.button("프로젝트 사본 저장").clicked() {
+                                ui.close();
+                                self.save_copy();
+                            }
+                            if ui.button("열기…").clicked() {
+                                ui.close();
+                                self.open_project(ctx);
+                            }
+                            if ui.button("새 프로젝트").clicked() {
+                                ui.close();
+                                self.fresh_project();
+                            }
+                        });
+                        ui.menu_button("화면", |ui| self.appearance_options(ui));
                     });
                 });
             });
@@ -779,7 +833,7 @@ impl Studio {
             .exact_height(32.)
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(239, 240, 232))
+                    .fill(self.palette.surface)
                     .inner_margin(egui::Margin::symmetric(20, 6)),
             )
             .show(ctx, |ui| {
@@ -788,7 +842,7 @@ impl Studio {
                 }
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("●").color(if self.save_error {
-                        ACCENT
+                        self.palette.accent
                     } else {
                         Color32::from_rgb(109, 140, 105)
                     }));
@@ -809,7 +863,7 @@ impl Studio {
                         if ui.small_button("도움말  ?").clicked() {
                             self.help = true;
                         }
-                        ui.small("RUST NATIVE   ·   1,000 UPM");
+                        ui.small("두들 폰트 0.1.0");
                         if self.job.is_some() {
                             ui.spinner();
                             ui.small("처리 중");
@@ -819,105 +873,44 @@ impl Studio {
             });
     }
     fn library(&mut self, ctx: &egui::Context) {
-        egui::SidePanel::left("collections")
-            .exact_width(208.)
+        egui::SidePanel::left("glyphs")
+            .exact_width(252.)
             .resizable(false)
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(241, 242, 235))
-                    .inner_margin(18),
+                    .fill(self.palette.surface)
+                    .inner_margin(16),
             )
             .show(ctx, |ui| {
                 if self.ai_cancel.is_some() {
                     ui.disable();
                 }
-                ui.add_space(14.);
-                ui.label(RichText::new("MY FONT").size(11.).color(MUTED));
-                ui.add_space(5.);
-                ui.label(RichText::new(&self.project.name).size(19.).strong());
-                ui.add_space(13.);
-                let authored = self
-                    .project
-                    .glyphs
-                    .iter()
-                    .filter(|g| g.status == "edited" || g.status == "blank")
-                    .count();
-                ui.label(
-                    RichText::new(format!("{authored}개의 작은 시작"))
-                        .size(12.)
-                        .color(MUTED),
-                );
-                ui.add_space(22.);
-                ui.label(RichText::new("문자 모음").size(12.).color(MUTED));
-                ui.add_space(5.);
-                for (i, (id, label, _)) in GROUPS.iter().enumerate() {
-                    let count = self
-                        .project
-                        .glyphs
-                        .iter()
-                        .filter(|g| g.group == *id && g.status == "edited")
-                        .count();
-                    let text = format!(
-                        "{}  {}",
-                        label,
-                        if count > 0 {
-                            count.to_string()
-                        } else {
-                            String::new()
+                ui.label(RichText::new(&self.project.name).size(15.).strong());
+                ui.add_space(6.);
+                let old_group = self.group;
+                egui::ComboBox::from_id_salt("collection-picker")
+                    .width(214.)
+                    .selected_text(GROUPS[self.group].1)
+                    .show_ui(ui, |ui| {
+                        for (i, (_, name, _)) in GROUPS.iter().enumerate() {
+                            ui.selectable_value(&mut self.group, i, *name);
                         }
-                    );
-                    if ui
-                        .add_sized(
-                            [172., 35.],
-                            egui::Button::new(RichText::new(text).size(13.))
-                                .selected(self.group == i),
-                        )
-                        .clicked()
-                    {
-                        self.group = i;
-                        self.search.clear();
-                        self.refresh_catalog();
-                    }
+                    });
+                if old_group != self.group {
+                    self.search.clear();
+                    self.refresh_catalog();
                 }
-                ui.add_space(16.);
-                if ui
-                    .add_sized([172., 34.], egui::Button::new("+ 문자 · 문자열 추가"))
-                    .clicked()
-                {
-                    self.add_open = true;
-                }
-                ui.add_space(18.);
-                ui.separator();
-                ui.add_space(14.);
-                ui.label(RichText::new("한 획씩, 나답게.").size(16.).strong());
-                ui.add_space(5.);
-                ui.label(
-                    RichText::new("완벽하지 않아도 좋아요.\n내 손끝에서 시작되는 폰트.")
-                        .size(12.)
-                        .color(MUTED),
-                );
-            });
-        egui::SidePanel::left("glyphs")
-            .exact_width(252.)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(PAPER).inner_margin(16))
-            .show(ctx, |ui| {
-                if self.ai_cancel.is_some() {
-                    ui.disable();
-                }
-                ui.add_space(10.);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(GROUPS[self.group].1).size(16.).strong());
+                    ui.label(
+                        RichText::new(format!("{}개 문자", self.catalog.len()))
+                            .size(12.)
+                            .color(self.palette.muted),
+                    );
+                    if ui.small_button("+ 문자 추가").clicked() {
+                        self.add_open = true;
+                    }
                 });
-                ui.label(
-                    RichText::new(format!(
-                        "{}개 문자 · 필요한 글자만 작업",
-                        self.catalog.len()
-                    ))
-                    .size(11.)
-                    .color(MUTED),
-                );
-                ui.add_space(13.);
+                ui.add_space(6.);
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut self.search)
@@ -964,9 +957,9 @@ impl Studio {
                                     let (rect, r) =
                                         ui.allocate_exact_size(Vec2::new(64., 72.), Sense::click());
                                     let fill = if is_selected {
-                                        Color32::from_rgb(251, 230, 212)
+                                        self.palette.selection
                                     } else {
-                                        Color32::from_rgb(255, 254, 250)
+                                        self.palette.surface
                                     };
                                     ui.painter().rect(
                                         rect,
@@ -974,11 +967,20 @@ impl Studio {
                                         fill,
                                         Stroke::new(
                                             if is_selected { 1.5_f32 } else { 1_f32 },
-                                            if is_selected { ACCENT } else { LINE },
+                                            if is_selected {
+                                                self.palette.accent
+                                            } else {
+                                                self.palette.line
+                                            },
                                         ),
                                         egui::StrokeKind::Inside,
                                     );
                                     if let Some(g) = g.filter(|g| g.status == "edited") {
+                                        ui.painter().rect_filled(
+                                            rect.shrink(5.),
+                                            4.,
+                                            Color32::from_rgb(255, 254, 251),
+                                        );
                                         paint_art(
                                             ui.ctx(),
                                             ui.painter(),
@@ -999,16 +1001,16 @@ impl Studio {
                                                 27.
                                             }),
                                             if g.is_some_and(|g| g.status == "blank") {
-                                                MUTED
+                                                self.palette.muted
                                             } else {
-                                                INK
+                                                self.palette.text
                                             },
                                         );
                                     }
                                     let dot = if g.is_some_and(|g| g.status == "edited") {
                                         Color32::from_rgb(113, 145, 103)
                                     } else {
-                                        LINE
+                                        self.palette.line
                                     };
                                     ui.painter().circle_filled(
                                         Pos2::new(rect.center().x, rect.bottom() - 8.),
@@ -1065,14 +1067,22 @@ fn paint_art(
     }
 }
 fn chip(ui: &mut egui::Ui, label: &str) {
-    ui.label(RichText::new(label).size(11.).color(MUTED));
+    ui.label(
+        RichText::new(label)
+            .size(11.)
+            .color(ui.visuals().weak_text_color()),
+    );
 }
 impl Studio {
     fn properties(&mut self, ctx: &egui::Context) {
         egui::SidePanel::right("properties")
             .exact_width(278.)
             .resizable(false)
-            .frame(egui::Frame::new().fill(PAPER).inner_margin(18))
+            .frame(
+                egui::Frame::new()
+                    .fill(self.palette.surface)
+                    .inner_margin(18),
+            )
             .show(ctx, |ui| {
                 if self.ai_cancel.is_some() {
                     ui.disable();
@@ -1097,7 +1107,11 @@ impl Studio {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(display(&text)).size(30.));
                         ui.vertical(|ui| {
-                            ui.label(RichText::new(codepoints(&text)).size(10.).color(MUTED));
+                            ui.label(
+                                RichText::new(codepoints(&text))
+                                    .size(10.)
+                                    .color(self.palette.muted),
+                            );
                             chip(
                                 ui,
                                 match locale.as_str() {
@@ -1148,7 +1162,7 @@ impl Studio {
                             });
                         }
                         ui.add_space(6.);
-                        ui.label(RichText::new("글자 폭").size(12.).color(MUTED));
+                        ui.label(RichText::new("글자 폭").size(12.).color(self.palette.muted));
                         if ui
                             .add(
                                 egui::DragValue::new(&mut advance)
@@ -1553,7 +1567,7 @@ impl Studio {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(234, 236, 228))
+                    .fill(self.palette.background)
                     .inner_margin(22),
             )
             .show(ctx, |ui| {
@@ -1585,10 +1599,11 @@ impl Studio {
                                 status(&current_status)
                             ))
                             .size(11.)
-                            .color(MUTED),
+                            .color(self.palette.muted),
                         );
                     });
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.toggle_value(&mut self.show_properties, "레이어 · 속성");
                         if ui
                             .add_enabled(!self.redo.is_empty(), egui::Button::new("↪"))
                             .on_hover_text("다시 실행 Ctrl+Y")
@@ -1607,7 +1622,7 @@ impl Studio {
                 });
                 ui.add_space(17.);
                 egui::Frame::new()
-                    .fill(PAPER)
+                    .fill(self.palette.surface)
                     .corner_radius(9)
                     .inner_margin(8)
                     .show(ui, |ui| {
@@ -1688,7 +1703,7 @@ impl Studio {
                             self.qa_canvas = Some(outer);
                         }
                         let painter = ui.painter_at(outer);
-                        painter.rect_filled(outer, 4., Color32::from_rgb(255, 254, 250));
+                        painter.rect_filled(outer, 12., Color32::from_rgb(255, 254, 251));
                         let to_screen = |p: [f64; 2]| {
                             Pos2::new(
                                 outer.left() + p[0] as f32 / 1000. * side,
@@ -1700,7 +1715,7 @@ impl Studio {
                                 painter.circle_filled(
                                     to_screen([i as f64 * 50., j as f64 * 50.]),
                                     0.8,
-                                    LINE,
+                                    Color32::from_rgb(226, 227, 217),
                                 );
                             }
                         }
@@ -1768,7 +1783,7 @@ impl Studio {
                                     Align2::CENTER_CENTER,
                                     display(&text),
                                     FontId::proportional(side * 0.45),
-                                    MUTED,
+                                    self.palette.muted,
                                 );
                             }
                         } else if current_status != "blank" && current_status != "unsupported" {
@@ -1792,12 +1807,12 @@ impl Studio {
                             painter.rect_stroke(
                                 rect,
                                 0.,
-                                Stroke::new(1_f32, ACCENT),
+                                Stroke::new(1_f32, self.palette.accent),
                                 egui::StrokeKind::Outside,
                             );
                             if s.kind == "path" {
                                 for pt in s.points.iter().step_by((s.points.len() / 24).max(1)) {
-                                    painter.circle_filled(to_screen(*pt), 2.5, ACCENT);
+                                    painter.circle_filled(to_screen(*pt), 2.5, self.palette.accent);
                                 }
                             }
                         }
@@ -1808,6 +1823,7 @@ impl Studio {
                             ]
                         });
                         if response.drag_started() && enabled {
+                            self.ai_dock_collapsed = true;
                             if let Some(pt) = point {
                                 self.drag_start = Some(pt);
                                 if self.tool == 4 {
@@ -2081,7 +2097,10 @@ impl Studio {
                 .size(28.)
                 .strong(),
         );
-        ui.label(RichText::new("작성한 그림과 시스템 대체 표시를 나란히 확인하세요.").color(MUTED));
+        ui.label(
+            RichText::new("작성한 그림과 시스템 대체 표시를 나란히 확인하세요.")
+                .color(self.palette.muted),
+        );
         ui.add_space(24.);
         ui.horizontal(|ui| {
             ui.add(egui::Slider::new(&mut self.preview_size, 24.0..=120.).text("크기"));
@@ -2107,20 +2126,20 @@ impl Studio {
         );
         ui.add_space(20.);
         egui::ScrollArea::vertical().show(ui,|ui|{
-            egui::Frame::new().fill(Color32::from_rgb(255,254,250)).stroke(Stroke::new(1_f32,LINE)).corner_radius(16).inner_margin(24).show(ui,|ui|{
-                ui.horizontal(|ui|{chip(ui,"PROJECT PREVIEW");chip(ui,"● 프로젝트 그림");ui.label(RichText::new("○ 시스템 대체").size(11.).color(MUTED));});ui.add_space(20.);
+            egui::Frame::new().fill(Color32::from_rgb(255,254,251)).stroke(Stroke::new(1_f32,self.palette.line)).corner_radius(16).inner_margin(24).show(ui,|ui|{ui.visuals_mut().override_text_color=Some(DRAW_INK);ui.visuals_mut().weak_text_color=Some(Palette::new(false).muted);
+                ui.horizontal(|ui|{chip(ui,"PROJECT PREVIEW");chip(ui,"● 프로젝트 그림");ui.label(RichText::new("○ 시스템 대체").size(11.).color(Palette::new(false).muted));});ui.add_space(20.);
                 for line in self.preview_text.split('\n'){ui.horizontal_wrapped(|ui|{ui.spacing_mut().item_spacing.x=0.;for(text,index)in preview(line,&self.project.glyphs,&self.preview_locale){let g=index.map(|i|&self.project.glyphs[i]);let size=self.preview_size;if let Some(g)=g.filter(|g|g.status=="edited"||g.status=="blank"){
                     let width=(size*g.artwork.advance as f32/1000.).max(1.);let(rect,r)=ui.allocate_exact_size(Vec2::new(width,size+14.),Sense::hover());if g.status=="edited"{paint_art(ui.ctx(),ui.painter(),Rect::from_min_size(rect.min,Vec2::splat(size)),&g.artwork,&g.id,self.revision,&mut self.textures);}ui.painter().line_segment([rect.left_bottom(),rect.right_bottom()],Stroke::new(2_f32,Color32::from_rgb(119,150,111)));r.on_hover_text(format!("프로젝트 글리프 · {}",codepoints(text)));
-                }else if control(text){if self.preview_controls{ui.label(RichText::new(display(text)).size(size*0.4).color(MUTED));}}
+                }else if control(text){if self.preview_controls{ui.label(RichText::new(display(text)).size(size*0.4).color(Palette::new(false).muted));}}
                 else if let Some(tex)=system_texture(ui.ctx(),if self.preview_controls&&text==" "{"·"}else{text},&self.preview_locale,size*0.78,&mut self.system_fonts,&mut self.textures){ui.image((tex.id(),tex.size_vec2())).on_hover_text(format!("시스템 폰트 대체 · {}",codepoints(text)));}
-                else{ui.label(RichText::new(text).size(size*0.78).color(MUTED));}
-                }if self.preview_controls{ui.label(RichText::new("↵").size(16.).color(MUTED));}});ui.add_space(10.);}
+                else{ui.label(RichText::new(text).size(size*0.78).color(Palette::new(false).muted));}
+                }if self.preview_controls{ui.label(RichText::new("↵").size(16.).color(Palette::new(false).muted));}});ui.add_space(10.);}
             });ui.add_space(20.);
             ui.horizontal(|ui|{ui.label(RichText::new("실제 출력 폰트 확인").size(20.).strong());if ui.add_enabled(self.job.is_none(),egui::Button::new("TTF 생성 · 검사")).clicked(){let p=self.project.clone();let locale=self.preview_locale.clone();self.spawn(ui.ctx(),move||{let r=font::export(&p,&font::ExportOptions{mode:Some("color".into()),locale:Some(locale),..Default::default()})?;let bytes=STANDARD.decode(&r.data).map_err(|e|e.to_string())?;let report=r.reports.iter().map(|r|format!("{}개 글리프 · {}\n{}",r.glyph_count,r.tables.join(" / "),r.warnings.join("\n"))).collect::<Vec<_>>().join("\n");Ok(Job::FontPreview(bytes,report))});}});
             chip(ui,"실제 생성한 TTF를 다시 읽고 Rustybuzz로 문자 치환을 시험합니다. 외부 앱의 컬러·시퀀스 지원은 다를 수 있어요.");
             if let Some(bytes)=&self.actual_font{
                 ui.add_space(10.);chip(ui,"이 아래는 실제 TTF만 사용합니다. 폰트에 없는 글자는 빈칸으로 표시됩니다.");
-                for line in self.preview_text.lines(){if let Some(tex)=font_texture(ui.ctx(),bytes,line,&self.preview_locale,self.preview_size,&format!("actual-{}",self.revision),&mut self.textures){ui.image((tex.id(),tex.size_vec2()));}}
+                for line in self.preview_text.lines(){if let Some(tex)=font_texture(ui.ctx(),bytes,line,&self.preview_locale,self.preview_size,&format!("actual-{}",self.revision),&mut self.textures){egui::Frame::new().fill(Color32::from_rgb(255,254,251)).inner_margin(8).show(ui,|ui|{ui.image((tex.id(),tex.size_vec2()));});}}
                 egui::CollapsingHeader::new("폰트 구조 검사 결과").show(ui,|ui|{ui.label(&self.export_report);});
             }
         });
@@ -2132,11 +2151,11 @@ impl Studio {
             RichText::new(
                 "원본과 이용 조건을 함께 보관해요. 적용해도 문자 매핑은 그대로 유지됩니다.",
             )
-            .color(MUTED),
+            .color(self.palette.muted),
         );
         ui.add_space(24.);
         egui::ScrollArea::vertical().show(ui,|ui|{
-            let mut apply=None;ui.horizontal_wrapped(|ui|{for t in &self.project.templates{egui::Frame::new().fill(Color32::from_rgb(255,254,250)).stroke(Stroke::new(1_f32,LINE)).corner_radius(14).inner_margin(20).show(ui,|ui|{ui.set_width(215.);let(rect,_)=ui.allocate_exact_size(Vec2::splat(180.),Sense::hover());if let Some(art)=&t.original{paint_art(ui.ctx(),ui.painter(),rect,art,&t.id,self.revision,&mut self.textures);}else{ui.painter().text(rect.center(),Align2::CENTER_CENTER,"원본 참조 없음",FontId::proportional(16.),MUTED);}ui.label(RichText::new(&t.name).size(18.).strong());chip(ui,&format!("{} · v{}",t.provider,t.version));chip(ui,&t.license);ui.label(RichText::new(&t.attribution).size(10.).color(MUTED));chip(ui,&format!("편집 {} / 폰트 포함 {} / AI {}",if t.permissions.edit{"가능"}else{"제한"},if t.permissions.embed{"가능"}else{"제한"},if t.permissions.ai{"가능"}else{"제한"}));if ui.button("선택한 글리프에 적용").clicked(){apply=Some(t.clone());}});}});
+            let mut apply=None;ui.horizontal_wrapped(|ui|{for t in &self.project.templates{egui::Frame::new().fill(self.palette.surface).stroke(Stroke::new(1_f32,self.palette.line)).corner_radius(14).inner_margin(20).show(ui,|ui|{ui.set_width(215.);let(rect,_)=ui.allocate_exact_size(Vec2::splat(180.),Sense::hover());if let Some(art)=&t.original{ui.painter().rect_filled(rect,8.,Color32::from_rgb(255,254,251));paint_art(ui.ctx(),ui.painter(),rect,art,&t.id,self.revision,&mut self.textures);}else{ui.painter().text(rect.center(),Align2::CENTER_CENTER,"원본 참조 없음",FontId::proportional(16.),self.palette.muted);}ui.label(RichText::new(&t.name).size(18.).strong());chip(ui,&format!("{} · v{}",t.provider,t.version));chip(ui,&t.license);ui.label(RichText::new(&t.attribution).size(10.).color(self.palette.muted));chip(ui,&format!("편집 {} / 폰트 포함 {} / AI {}",if t.permissions.edit{"가능"}else{"제한"},if t.permissions.embed{"가능"}else{"제한"},if t.permissions.ai{"가능"}else{"제한"}));if ui.button("선택한 글리프에 적용").clicked(){apply=Some(t.clone());}});}});
             if let Some(t)=apply{self.edit(|g|apply_template(g,&t));self.tab=0;}
             ui.add_space(24.);ui.separator();ui.add_space(18.);ui.label(RichText::new("내 템플릿 연결").size(22.).strong());ui.label("Apple·Samsung 등 제공자별 자산은 권한을 확인한 원본만 직접 연결하세요. 앱에는 해당 업체 그림이 포함되어 있지 않습니다.");ui.add_space(12.);
             ui.horizontal(|ui|{if ui.button("템플릿 JSON 가져오기").clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Template JSON",&["json"]).pick_file(){let result=(||->Result<Template,String>{check(std::fs::metadata(&path).map_err(|e|e.to_string())?.len()<16_000_000,"템플릿은 16MB 이하여야 해요.")?;let t:Template=serde_json::from_slice(&std::fs::read(path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;t.validate()?;Ok(t)})();match result{Ok(t)=>{if self.project.templates.iter().any(|v|v.id==t.id){self.notify("같은 ID의 템플릿이 이미 있어요. 새 버전은 별도 ID로 가져오세요.");}else{self.project.templates.push(t);self.changed();}},Err(e)=>self.notify(e)}}}
@@ -2274,7 +2293,7 @@ impl Studio {
                 });
             if let Some(candidate) = g.candidates.iter().find(|c| c.id == candidate_id) {
                 if !candidate.sources.is_empty() {
-                    ui.label(RichText::new("공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.").size(12.).color(MUTED));
+                    ui.label(RichText::new("공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.").size(12.).color(self.palette.muted));
                 }
                 ui.columns(2, |columns| {
                     for (column, (label, artwork, key)) in columns.iter_mut().zip([
@@ -2312,7 +2331,7 @@ impl Studio {
                     editable(g) && !matches!(g.status.as_str(), "blank" | "unsupported");
                 let response = ui.add_enabled(
                     can_apply,
-                    egui::Button::new("이 후보 채택").fill(Color32::from_rgb(245, 220, 200)),
+                    egui::Button::new("이 후보 채택").fill(self.palette.selection),
                 );
                 #[cfg(feature = "ui-qa")]
                 {
@@ -2447,15 +2466,20 @@ impl Studio {
         });
     }
     fn ai_dock(&mut self, ctx: &egui::Context) {
+        if self.ai_cancel.is_none()
+            && self.companion.motion.mood == doodle_core::companion::Mood::Thinking
+        {
+            self.companion
+                .motion
+                .react(doodle_core::companion::Mood::Idle);
+        }
         if self.export_open && self.ai_cancel.is_none() {
             return;
         }
-        if !self.ai_ready() && self.ai_cancel.is_none() {
-            return;
-        }
+
         let frame = egui::Frame::new()
-            .fill(Color32::from_rgb(255, 254, 250))
-            .stroke(Stroke::new(1_f32, LINE))
+            .fill(self.palette.surface)
+            .stroke(Stroke::new(1_f32, self.palette.line))
             .corner_radius(18)
             .inner_margin(18)
             .shadow(egui::epaint::Shadow {
@@ -2474,7 +2498,11 @@ impl Studio {
                 .backdrop_color(Color32::from_black_alpha(35))
                 .show(ctx, |ui| {
                     ui.set_width((ctx.content_rect().width() - 100.).min(700.));
+                    self.companion
+                        .motion
+                        .react(doodle_core::companion::Mood::Thinking);
                     ui.horizontal(|ui| {
+                        self.companion.show(ui, 48., self.preferences.reduce_motion);
                         ui.spinner();
                         ui.label(RichText::new(&self.ai_status).strong());
                         ui.label(format!("{}초", self.ai_started.elapsed().as_secs()));
@@ -2501,7 +2529,7 @@ impl Studio {
                             "작업 중에는 화면 입력과 편집이 잠깁니다."
                         })
                         .size(12.)
-                        .color(MUTED),
+                        .color(self.palette.muted),
                     );
                 });
         } else {
@@ -2510,13 +2538,18 @@ impl Studio {
                     ui.set_width((ctx.content_rect().width() - 100.).min(700.));
                     ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("DOODLE ASSIST").strong().color(ACCENT));
+                        self.companion.show(ui, 48., self.preferences.reduce_motion);
+                        ui.label(
+                            RichText::new("두들 어시스트")
+                                .strong()
+                                .color(self.palette.accent),
+                        );
                         chip(
                             ui,
                             if self.api_provider == "local" {
-                                "이 PC에서 실행 · 텍스트 + 그림"
+                                "로컬 AI"
                             } else if self.send_reference {
-                                "API · 텍스트 + 그림"
+                                "API · 그림 포함"
                             } else {
                                 "API · 텍스트만"
                             },
@@ -2538,8 +2571,24 @@ impl Studio {
                             }
                         });
                     });
-                    if self.ai_dock_collapsed {
+                    if self.ai_dock_collapsed { return; }
+                    if !self.ai_ready() {
+                        ui.horizontal(|ui| {
+                            ui.label("한 글자부터 가볍게 그려보세요. AI를 연결하면 두들이 도와드려요.");
+                            if ui.button("AI 연결하기").clicked() { self.tab=3; self.ai_dock_collapsed=true; }
+                        });
                         return;
+                    }
+                    if self.ai_answer.is_empty() {
+                        ui.horizontal_wrapped(|ui| {
+                            for (label,prompt,drawing) in [
+                                ("획 다듬기", "현재 그림의 형태와 위치는 유지하고 획 굵기를 48로 통일해줘.",true),
+                                ("둥근 손글씨", "선택한 글자를 동글동글한 손글씨로 만들어줘.",true),
+                                ("균형 봐주기", "현재 글자의 기준선, 획의 균형과 간격을 살펴보고 개선할 점을 알려줘.",false),
+                            ] {
+                                if ui.small_button(label).clicked() { self.ai_prompt=prompt.into(); self.ai_action=drawing; }
+                            }
+                        });
                     }
                     let candidate_count = self
                         .project
@@ -2555,7 +2604,7 @@ impl Studio {
                     }
                     if !self.ai_answer.is_empty() {
                         let answer = egui::Frame::new()
-                            .fill(PAPER)
+                            .fill(self.palette.surface)
                             .corner_radius(8)
                             .inner_margin(8)
                             .show(ui, |ui| {
@@ -2585,8 +2634,8 @@ impl Studio {
                     ui.horizontal(|ui| {
                         let width = ui.available_width() - 85.;
                         let prompt = egui::Frame::new()
-                            .fill(Color32::WHITE)
-                            .stroke(Stroke::new(1_f32, LINE))
+                            .fill(self.palette.background)
+                            .stroke(Stroke::new(1_f32, self.palette.line))
                             .corner_radius(6)
                             .inner_margin(6)
                             .show(ui, |ui| {
@@ -2626,7 +2675,7 @@ impl Studio {
                                 "상담하기"
                             })
                             .min_size(Vec2::new(70., 46.))
-                            .fill(Color32::from_rgb(245, 220, 200)),
+                            .fill(self.palette.selection),
                         );
                         #[cfg(feature = "ui-qa")]
                         {
@@ -2648,7 +2697,7 @@ impl Studio {
     fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
         use doodle_core::needle::Mode;
         let previous = self.decision_mode;
-        egui::Frame::new().fill(Color32::from_rgb(238,239,232)).corner_radius(12).inner_margin(18).show(ui, |ui| {
+        egui::Frame::new().fill(self.palette.raised).corner_radius(12).inner_margin(18).show(ui, |ui| {
             ui.set_max_width(760.);
             ui.label(RichText::new("입력 판단 AI · 공통 옵션").size(19.).strong());
             ui.horizontal(|ui| {
@@ -2666,8 +2715,8 @@ impl Studio {
                         self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
                     }
                 });
-                ui.label(RichText::new("판단은 PC에서 텍스트만 읽어요. 설치되지 않았거나 실패하면 선택한 AI로 바로 넘깁니다.").size(12.).color(MUTED));
-                if !self.install_error.is_empty() { ui.colored_label(ACCENT, &self.install_error); }
+                ui.label(RichText::new("판단은 PC에서 텍스트만 읽어요. 설치되지 않았거나 실패하면 선택한 AI로 바로 넘깁니다.").size(12.).color(self.palette.muted));
+                if !self.install_error.is_empty() { ui.colored_label(self.palette.accent, &self.install_error); }
             }
         });
         if previous != self.decision_mode {
@@ -2723,6 +2772,10 @@ impl Studio {
         self.connection_changed();
     }
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
+        ui.heading("내 작업실 설정");
+        self.appearance_options(ui);
+        ui.add_space(16.);
+        ui.separator();
         ui.add_space(12.);
         ui.label(
             RichText::new("필요할 때만, AI의 도움을.")
@@ -2731,13 +2784,13 @@ impl Studio {
         );
         ui.label(
             RichText::new("직접 그리기·저장·복원·폰트 출력은 API 없이도 사용할 수 있어요.")
-                .color(MUTED),
+                .color(self.palette.muted),
         );
         ui.add_space(24.);
         self.decision_options_ui(ui);
         ui.add_space(16.);
         ui.label(RichText::new("그림 분석·생성 AI").size(20.).strong());
-        egui::Frame::new().fill(Color32::from_rgb(255,254,250)).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{
+        egui::Frame::new().fill(self.palette.surface).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{
             for (provider, label) in [("local", "내장 로컬 AI"), ("openai", "OpenAI 호환"), ("anthropic", "Anthropic 호환")] {
                 if ui.selectable_label(self.api_provider == provider, label).clicked() { self.select_ai_provider(provider); }
             }
@@ -2746,15 +2799,15 @@ impl Studio {
                 ui.label("Gemma 4 E2B · 그림 상담과 후보 생성");
                 chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"로컬 AI 설치가 필요해요"});
                 ui.label("최초 다운로드 약 3.4 GB · 설치 중에는 편집이 잠깁니다.");
-                ui.label(RichText::new(format!("설치 위치: {}",doodle_core::local_ai::root().display())).size(12.).color(MUTED));
-                if !self.local_installed {let missing=doodle_core::ai_install::missing(&doodle_core::local_ai::root());ui.label(RichText::new(format!("확인이 필요한 파일: {}",missing.join(", "))).size(12.).color(MUTED));}
+                ui.label(RichText::new(format!("설치 위치: {}",doodle_core::local_ai::root().display())).size(12.).color(self.palette.muted));
+                if !self.local_installed {let missing=doodle_core::ai_install::missing(&doodle_core::local_ai::root());ui.label(RichText::new(format!("확인이 필요한 파일: {}",missing.join(", "))).size(12.).color(self.palette.muted));}
                 ui.horizontal(|ui|{
-                    let button=ui.add_enabled(self.job.is_none(),egui::Button::new(if self.local_installed{"설치 파일 검증 · 복구"}else if self.install_error.is_empty(){"로컬 AI 설치"}else{"설치 다시 시도"}).fill(Color32::from_rgb(245,220,200)));
+                    let button=ui.add_enabled(self.job.is_none(),egui::Button::new(if self.local_installed{"설치 파일 검증 · 복구"}else if self.install_error.is_empty(){"로컬 AI 설치"}else{"설치 다시 시도"}).fill(self.palette.selection));
                     #[cfg(feature="ui-qa")] {self.qa_install_button=Some(button.rect);}
                     if button.clicked(){self.install_ai(ui.ctx());}
                     if ui.button("설치 상태 다시 확인").clicked(){self.local_installed=doodle_core::local_ai::installed();self.last_install_check=Instant::now();}
                 });
-                if !self.install_error.is_empty(){ui.colored_label(ACCENT,&self.install_error);}
+                if !self.install_error.is_empty(){ui.colored_label(self.palette.accent,&self.install_error);}
                 chip(ui,"필요할 때 Gemma 4를 읽고 작업이 끝나면 메모리를 반환합니다.");
             } else {
             let mut changed = false;
@@ -2781,12 +2834,12 @@ impl Studio {
                 if forget.clicked() { self.api_key.clear(); self.connection_changed(); self.save_connections(); }
             });
             chip(ui,"자동 저장 · 비밀번호·지문 입력 없이 다음 실행에 복원합니다.");
-            ui.label(RichText::new("키는 Windows 계정으로 암호화하며 제공자·주소별로 보관해요. 프로젝트에는 포함하지 않습니다.").size(12.).color(MUTED));
+            ui.label(RichText::new("키는 Windows 계정으로 암호화하며 제공자·주소별로 보관해요. 프로젝트에는 포함하지 않습니다.").size(12.).color(self.palette.muted));
             }
             if !self.connections_status.is_empty() {
-                ui.colored_label(if self.connections_error { ACCENT } else { MUTED }, &self.connections_status);
+                ui.colored_label(if self.connections_error { self.palette.accent } else { self.palette.muted }, &self.connections_status);
             }
-            ui.add_space(20.);ui.label("원하는 그림 스타일");ui.add(egui::TextEdit::multiline(&mut self.ai_prompt).desired_width(680.).desired_rows(3));ui.checkbox(&mut self.ai_color,"컬러 그림 제안");ui.checkbox(&mut self.send_reference,"현재 드로잉 영역의 PNG 이미지와 벡터를 API에 전송");chip(ui,"로컬 AI는 그림을 PC에서 읽습니다. API에서는 체크한 경우에만 그림을 전송합니다.");ui.add_space(18.);if ui.add_enabled(self.job.is_none(),egui::Button::new("선택한 글리프의 후보 생성").fill(Color32::from_rgb(245,220,200))).clicked(){self.generate_ai(ui.ctx());}ui.add_space(8.);ui.label(RichText::new("후보는 검토 후 직접 채택합니다. 잠금·의도적 빈칸·제어 문자는 보호됩니다.").size(12.).color(MUTED));
+            ui.add_space(20.);ui.label("원하는 그림 스타일");ui.add(egui::TextEdit::multiline(&mut self.ai_prompt).desired_width(680.).desired_rows(3));ui.checkbox(&mut self.ai_color,"컬러 그림 제안");ui.checkbox(&mut self.send_reference,"현재 드로잉 영역의 PNG 이미지와 벡터를 API에 전송");chip(ui,"로컬 AI는 그림을 PC에서 읽습니다. API에서는 체크한 경우에만 그림을 전송합니다.");ui.add_space(18.);if ui.add_enabled(self.job.is_none(),egui::Button::new("선택한 글리프의 후보 생성").fill(self.palette.selection)).clicked(){self.generate_ai(ui.ctx());}ui.add_space(8.);ui.label(RichText::new("후보는 검토 후 직접 채택합니다. 잠금·의도적 빈칸·제어 문자는 보호됩니다.").size(12.).color(self.palette.muted));
         });
         ui.add_space(22.);
         ui.label(RichText::new("프로젝트").size(20.).strong());
@@ -3146,6 +3199,23 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if qa_view == "appearance-write" {
+            input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            let frame = ctx.cumulative_frame_nr();
+            if let Some(rect) = self.qa_themes[2].filter(|_| frame == 3 || frame == 4) {
+                let pos = rect.center();
+                input.events.push(egui::Event::PointerMoved(pos));
+                input.events.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 3,
+                    modifiers: Default::default(),
+                });
+            }
+            return;
+        }
         if let Some(format) = qa_view.strip_prefix("export-") {
             let format = format.trim_end_matches("-small");
             input
@@ -3342,6 +3412,32 @@ impl eframe::App for Studio {
         if let Ok(output) = std::env::var("DOODLE_QA_OUTPUT") {
             if ctx.cumulative_frame_nr() == 0 {
                 match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
+                    "appearance-write" => {
+                        self.tab = 3;
+                        self.preferences.theme = Theme::Light;
+                        ctx.set_theme(egui::Theme::Light);
+                        self.ai_dock_collapsed = true;
+                    }
+                    "appearance-restored" => {
+                        self.tab = 3;
+                        assert_eq!(self.preferences.theme, Theme::Dark);
+                        assert!(ctx.style().visuals.dark_mode);
+                        self.ai_dock_collapsed = true;
+                    }
+                    "theme-light" | "theme-light-small" | "theme-dark-small" => {
+                        let view = std::env::var("DOODLE_QA_VIEW").unwrap();
+                        self.preferences.theme = if view.contains("dark") {
+                            Theme::Dark
+                        } else {
+                            Theme::Light
+                        };
+                        ctx.set_theme(self.preferences.theme.preference());
+                        if view.ends_with("small") {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(
+                                1120., 760.,
+                            )));
+                        }
+                    }
                     "preview" => self.tab = 1,
                     "templates" => self.tab = 2,
                     "settings" => self.tab = 3,
@@ -3760,6 +3856,16 @@ impl eframe::App for Studio {
             if install_flow && self.ai_started.elapsed() > Duration::from_secs(90) {
                 panic!("Install UI flow timed out: {}", self.install_error);
             }
+            if std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("appearance-write")
+                && ctx.cumulative_frame_nr() == 10
+            {
+                assert_eq!(self.preferences.theme, Theme::Dark);
+                assert!(ctx.style().visuals.dark_mode);
+                assert_eq!(
+                    Preferences::load(&self.save_path.with_file_name("appearance.json")).theme,
+                    Theme::Dark
+                );
+            }
             let connection_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
             let connection_flow = connection_view.starts_with("connections-");
             let floating_flow = connection_view.starts_with("ai-floating");
@@ -3877,15 +3983,22 @@ impl eframe::App for Studio {
         if self.tab == 3 && self.job.is_none() {
             ctx.request_repaint_after(Duration::from_secs(2));
         }
+        self.palette = Palette::of(ctx);
         self.top(ctx);
         self.footer(ctx);
         if self.tab == 0 {
             self.library(ctx);
-            self.properties(ctx);
+            if self.show_properties {
+                self.properties(ctx);
+            }
             self.editor(ctx);
         } else {
             egui::CentralPanel::default()
-                .frame(egui::Frame::new().fill(PAPER).inner_margin(32))
+                .frame(
+                    egui::Frame::new()
+                        .fill(self.palette.surface)
+                        .inner_margin(32),
+                )
                 .show(ctx, |ui| {
                     if self.ai_cancel.is_some() {
                         ui.disable();
@@ -3901,6 +4014,19 @@ impl eframe::App for Studio {
         }
         self.dialogs(ctx);
         self.ai_dock(ctx);
+        #[cfg(feature = "ui-qa")]
+        if ctx.cumulative_frame_nr() == 10 {
+            use doodle_core::companion::Mood;
+            let expected = match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
+                "ai-busy" => Some(Mood::Thinking),
+                "ai-recover" | "ai-candidate-invalid" => Some(Mood::NeedsHelp),
+                "ai-candidates" | "ai-candidate-accept" | "ai-typography" => Some(Mood::Done),
+                _ => None,
+            };
+            if let Some(expected) = expected {
+                assert_eq!(self.companion.motion.mood, expected);
+            }
+        }
         if !self.message.is_empty()
             && (self.message_time.elapsed() < Duration::from_secs(9) || self.save_error)
         {
@@ -3912,7 +4038,7 @@ impl eframe::App for Studio {
                         ui.disable();
                     }
                     egui::Frame::new()
-                        .fill(INK)
+                        .fill(Color32::from_rgb(45, 52, 63))
                         .corner_radius(10)
                         .inner_margin(16)
                         .show(ui, |ui| {

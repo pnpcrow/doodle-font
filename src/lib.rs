@@ -2,6 +2,8 @@ pub mod ai;
 pub mod ai_install;
 pub mod ai_pipeline;
 pub mod ai_settings;
+pub mod appearance;
+pub mod companion;
 pub mod document;
 pub mod font;
 pub mod glyph_layout;
