@@ -9,9 +9,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Release build failed' }
 $destination = [IO.Path]::GetFullPath((Join-Path $repo $OutputDirectory))
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 Copy-Item -LiteralPath 'target\release\doodle-font.exe' -Destination (Join-Path $destination 'Doodle-Font.exe')
-Copy-Item -LiteralPath 'README.md' -Destination (Join-Path $destination 'README.md')
+Copy-Item -LiteralPath 'README.md','README.en.md','README.ja.md' -Destination $destination
 Copy-Item -LiteralPath 'THIRD_PARTY_NOTICES.md' -Destination (Join-Path $destination 'THIRD_PARTY_NOTICES.md')
 New-Item -ItemType Directory -Force -Path (Join-Path $destination 'scripts'),(Join-Path $destination 'licenses'),(Join-Path $destination 'assets') | Out-Null
+Copy-Item -LiteralPath 'assets/brand.png' -Destination (Join-Path $destination 'assets/brand.png')
 New-Item -ItemType Directory -Force -Path (Join-Path $destination 'licenses\typefaces') | Out-Null
 Copy-Item -LiteralPath 'assets\fonts\Noto-OFL.txt','assets\fonts\SingleDay-OFL.txt','assets\fonts\manifest.json' -Destination (Join-Path $destination 'licenses\typefaces')
 Copy-Item -LiteralPath 'assets/local-ai-manifest.json' -Destination (Join-Path $destination 'assets/local-ai-manifest.json')
