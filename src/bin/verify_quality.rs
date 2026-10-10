@@ -87,6 +87,9 @@ fn main() {
     let layout_suite = args.get(2).is_some_and(|s| s == "--layout");
     let cases = if layout_suite {
         vec![
+            ("A", "default", "A를 굵기 500의 검은 고딕체로 만들어줘."),
+            ("I", "default", "I를 굵기 500의 검은 고딕체로 만들어줘."),
+            ("M", "default", "M를 굵기 500의 검은 고딕체로 만들어줘."),
             ("H", "default", "H를 굵기 500의 검은 고딕체로 만들어줘."),
             ("x", "default", "x를 굵기 500의 검은 고딕체로 만들어줘."),
             (
@@ -94,6 +97,7 @@ fn main() {
                 "default",
                 "g를 굵기 500의 검은 고딕체로 만들어줘. 아래로 내려오는 획을 살려줘.",
             ),
+            ("한", "ko", "한을 굵기 500의 검은 고딕체로 만들어줘."),
         ]
     } else if style_suite {
         vec![("한","ko","선택한 한 글자를 얇고 단정한 명조체로 그려줘."),("가","ko","가 글자를 따뜻한 손글씨로 만들어줘."),("A","default","현재 그림을 유지해서 보정해줘. 두 획 모두 굵기를 70으로 통일하고 글자의 형태와 위치는 그대로 유지해줘.")]
@@ -139,7 +143,10 @@ fn main() {
                     let bounds = doodle_core::glyph_layout::ink_bounds(&art)
                         .unwrap()
                         .unwrap();
-                    assert!((bounds[0] - 80.).abs() < 0.01);
+                    assert!((bounds[0] + bounds[2] - art.advance).abs() < 0.01);
+                    assert!(bounds[0] >= 80. && bounds[2] <= 920.);
+                    assert_eq!(result["style"]["width"], 100);
+                    assert_eq!(result["style"]["tracking"], 0);
                     if *text == "g" {
                         assert!(bounds[3] > 840. && bounds[3] <= 960.01);
                     }
