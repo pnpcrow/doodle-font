@@ -1,4 +1,4 @@
-param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly, [switch]$FloatingOnly, [switch]$ExportOnly, [switch]$UsabilityOnly, [switch]$CompanionOnly, [switch]$SettingsOnly, [switch]$LayoutOnly)
+param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly, [switch]$FloatingOnly, [switch]$ExportOnly, [switch]$UsabilityOnly, [switch]$CompanionOnly, [switch]$SettingsOnly, [switch]$LayoutOnly, [switch]$LanguageOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
@@ -27,12 +27,16 @@ $layoutViews = @('layout-window','layout-corners','layout-corners-fallback','lay
 $layoutViews += 'layout-companion-drag-write','layout-companion-drag-restored-small','layout-companion-drag-reset'
 if ($LayoutOnly) { $views = $layoutViews }
 elseif (-not ($ConnectionsOnly -or $FloatingOnly -or $ExportOnly -or $UsabilityOnly -or $CompanionOnly -or $SettingsOnly)) { $views += $layoutViews }
+if ($LanguageOnly) {
+    $views = @('language-en-write','language-en-restored','language-ja-write','language-ja-restored','language-ko-write','language-ko-restored','language-system-write','language-system-restored','language-en-editor-small','language-ja-editor-small','language-en-templates-small','language-ja-templates-small','language-en-export-small','language-ja-export-small','language-en-api-small','language-ja-api-small')
+}
 foreach ($viewName in $views) {
     $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-$viewName"
     if ($viewName.StartsWith('appearance-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-appearance" }
     if ($viewName.StartsWith('renderer-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-renderer" }
     if ($viewName.StartsWith('connections-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-connections" }
     if ($viewName.StartsWith('layout-companion-drag-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-companion-placement" }
+    if ($viewName.StartsWith('language-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-language-$($viewName.Split('-')[1])" }
     if ($SettingsOnly -and $viewName.EndsWith('-auto')) {
         $packageDir = Join-Path $env:DOODLE_DATA_DIR 'models'
         New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
@@ -60,6 +64,7 @@ foreach ($viewName in $views) {
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
 Write-Output "Native UI QA passed: $($views.Count) scenarios."
+if ($LanguageOnly) { Write-Output 'Language dropdown, immediate switching, restart, unchanged project data, and translated small-window editor/templates/export/settings passed.'; return }
 if ($LayoutOnly) { Write-Output 'Native window corners (DWM and fallback), maximize/fullscreen/restore/resize/close, exit autosave, project editing, tabs, template cards, animated sidebars, companion dragging/persistence/reset, and context menu passed.'; return }
 if ($SettingsOnly) { Write-Output 'Compact settings, API test success/error, separate generation window, disabled AI, isolated automatic installs, and saved credentials passed.'; return }
 if ($CompanionOnly) { Write-Output 'Side-by-side comparison, selection, process restart, switching back, and small-window bounds passed.'; return }

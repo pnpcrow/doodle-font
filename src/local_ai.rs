@@ -1,4 +1,5 @@
 //! Local, on-demand native inference. No models or user content leave this machine.
+use crate::i18n::{format as tf, text as tr};
 use serde_json::{json, Value};
 use std::{
     path::PathBuf,
@@ -62,7 +63,7 @@ impl Drop for Server {
 impl Server {
     async fn start(cancel: &AtomicBool) -> Result<Self, String> {
         if !installed() {
-            return Err("AI 연결 화면에서 '로컬 AI 설치'를 눌러 주세요.".into());
+            return Err(tr("설정에서 로컬 AI를 선택하면 설치할 수 있어요.").into());
         }
         let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
         let port = listener.local_addr().map_err(|e| e.to_string())?.port();
@@ -104,7 +105,7 @@ impl Server {
         let mut server = Self {
             child: command
                 .spawn()
-                .map_err(|e| format!("로컬 AI 실행 실패: {e}"))?,
+                .map_err(|e| tf("로컬 AI 실행 실패: {0}", &[format!("{}", e)]))?,
             endpoint: format!("http://127.0.0.1:{port}/v1"),
             key,
         };
@@ -115,7 +116,7 @@ impl Server {
             .map_err(|e| e.to_string())?;
         for _ in 0..600 {
             if cancel.load(Ordering::Relaxed) {
-                return Err("AI 작업을 취소했어요.".into());
+                return Err(tr("AI 작업을 취소했어요.").into());
             }
             if server
                 .child
@@ -124,7 +125,7 @@ impl Server {
                 .is_some()
             {
                 return Err(
-                    "로컬 AI 실행이 중단되었어요. 모델 파일과 메모리를 확인해 주세요.".into(),
+                    tr("로컬 AI 실행이 중단되었어요. 모델 파일과 메모리를 확인해 주세요.").into(),
                 );
             }
             if client
@@ -138,7 +139,7 @@ impl Server {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        Err("로컬 모델 준비 시간이 초과되었어요.".into())
+        Err(tr("로컬 모델 준비 시간이 초과되었어요.").into())
     }
 }
 
@@ -156,18 +157,18 @@ pub fn run(
         let work = async {
             crate::ai::validate_target(&payload, payload["action"] != "assist")?;
             if payload["config"]["provider"] == "local" {
-                let _ = status.send("Gemma 4 E2B 어시스턴트 준비 중".into());
+                let _ = status.send(tr("Gemma 4 E2B 어시스턴트 준비 중").into());
                 let assistant = Server::start(&cancel).await?;
                 payload["config"] = json!({"provider":"openai","endpoint":assistant.endpoint,"model":"local","key":assistant.key,"local":true});
                 payload["sendReference"] = json!(true);
                 let _ = status.send(if payload["action"] == "generate" {
-                    "그림 후보를 그리는 중"
+                    tr("그림 후보를 그리는 중")
                 } else {
-                    "그림을 확인하고 답변 작성 중"
+                    tr("그림을 확인하고 답변 작성 중")
                 }.into());
                 perform(payload).await
             } else {
-                let _ = status.send("AI가 그림을 확인하고 작업 중".into());
+                let _ = status.send(tr("AI가 그림을 확인하고 작업 중").into());
                 perform(payload).await
             }
         };
@@ -175,7 +176,7 @@ pub fn run(
         loop { tokio::select! {
             result = &mut work => return result,
             _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                if cancel.load(Ordering::Relaxed) { return Err("AI 작업을 취소했어요.".into()); }
+                if cancel.load(Ordering::Relaxed) { return Err(tr("AI 작업을 취소했어요.").into()); }
             }
         }}
     })

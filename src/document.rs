@@ -1,3 +1,4 @@
+use crate::i18n::{format as tf, text as tr};
 use crate::model::*;
 use std::collections::{HashMap, HashSet};
 use unicode_segmentation::UnicodeSegmentation;
@@ -41,21 +42,21 @@ pub fn control(text: &str) -> bool {
 }
 pub fn status(s: &str) -> &str {
     match s {
-        "missing" => "미작성",
-        "edited" => "작성됨",
-        "blank" => "의도적 빈칸",
-        "system" => "시스템 표시",
-        _ => "미지원",
+        "missing" => tr("미작성"),
+        "edited" => tr("작성됨"),
+        "blank" => tr("의도적 빈칸"),
+        "system" => tr("시스템 표시"),
+        _ => tr("미지원"),
     }
 }
 pub fn new_shape(kind: &str) -> Shape {
     Shape {
         id: uid(),
         name: match kind {
-            "path" => "자유로운 선",
-            "rect" => "네모",
-            "ellipse" => "동그라미",
-            _ => "가져온 이미지",
+            "path" => tr("자유로운 선"),
+            "rect" => tr("네모"),
+            "ellipse" => tr("동그라미"),
+            _ => tr("가져온 이미지"),
         }
         .into(),
         kind: kind.into(),
@@ -129,10 +130,13 @@ pub fn editable(g: &Glyph) -> bool {
 pub fn apply_template(g: &mut Glyph, t: &Template) -> Result<(), String> {
     check(
         !g.locked && g.mapping != "control",
-        "잠긴 글리프 또는 제어 문자는 변경할 수 없어요.",
+        tr("잠긴 글리프 또는 제어 문자는 변경할 수 없어요."),
     )?;
-    check(t.permissions.display, "템플릿 표시 권한이 없어요.")?;
-    let art = t.original.as_ref().ok_or("복원할 템플릿 원본이 없어요.")?;
+    check(t.permissions.display, tr("템플릿 표시 권한이 없어요."))?;
+    let art = t
+        .original
+        .as_ref()
+        .ok_or(tr("복원할 템플릿 원본이 없어요."))?;
     g.template = Some(t.clone());
     g.artwork = art.clone();
     g.baseline = None;
@@ -144,7 +148,7 @@ pub fn apply_template(g: &mut Glyph, t: &Template) -> Result<(), String> {
 pub fn restore(g: &mut Glyph, mode: &str) -> Result<(), String> {
     check(
         !g.locked && g.mapping != "control",
-        "잠긴 글리프 또는 제어 문자는 복원할 수 없어요.",
+        tr("잠긴 글리프 또는 제어 문자는 복원할 수 없어요."),
     )?;
     if mode == "system" {
         g.status = "system".into();
@@ -155,7 +159,9 @@ pub fn restore(g: &mut Glyph, mode: &str) -> Result<(), String> {
     } else {
         g.baseline.as_ref()
     }
-    .ok_or("복원할 원본 데이터가 없어요. 같은 버전의 원본을 가져와 주세요.")?;
+    .ok_or(tr(
+        "복원할 원본 데이터가 없어요. 같은 버전의 원본을 가져와 주세요.",
+    ))?;
     g.artwork = a.clone();
     if mode == "template" {
         g.sources.clear();
@@ -166,19 +172,19 @@ pub fn restore(g: &mut Glyph, mode: &str) -> Result<(), String> {
 pub fn accept(g: &mut Glyph, id: &str) -> Result<(), String> {
     check(
         editable(g) && !matches!(g.status.as_str(), "blank" | "unsupported"),
-        "잠금·빈칸·미지원 항목은 AI 적용에서 보호돼요.",
+        tr("잠금·빈칸·미지원 항목은 AI 적용에서 보호돼요."),
     )?;
     let candidate = g
         .candidates
         .iter()
         .find(|c| c.id == id)
-        .ok_or("후보를 찾을 수 없어요.")?
+        .ok_or(tr("후보를 찾을 수 없어요."))?
         .clone();
     for source in &candidate.sources {
         source.validate()?;
         check(
             source.permissions.edit && source.permissions.ai,
-            "후보의 사용 권한을 확인해 주세요.",
+            tr("후보의 사용 권한을 확인해 주세요."),
         )?;
     }
     check(
@@ -189,7 +195,7 @@ pub fn accept(g: &mut Glyph, id: &str) -> Result<(), String> {
                 .filter(|t| !g.sources.iter().any(|s| s.id == t.id))
                 .count()
             <= 100,
-        "참조 출처를 더 저장할 수 없어요.",
+        tr("참조 출처를 더 저장할 수 없어요."),
     )?;
     g.artwork = candidate.artwork;
     for source in candidate.sources {
@@ -267,11 +273,11 @@ pub fn templates() -> Vec<Template> {
     heart.fill = true;
     heart.color = "#df795c".into();
     [
-        ("doodle-a-v1", "연필로 쓴 A", a),
-        ("doodle-smile-v1", "햇살 같은 미소", smile),
+        ("doodle-a-v1", tr("연필로 쓴 A"), a),
+        ("doodle-smile-v1", tr("햇살 같은 미소"), smile),
         (
             "doodle-heart-v1",
-            "작은 마음",
+            tr("작은 마음"),
             Artwork {
                 advance: 1000.,
                 shapes: vec![heart],
@@ -303,7 +309,7 @@ pub fn new_project() -> Project {
     let mut p = Project {
         schema_version: 1,
         id: uid(),
-        name: "나의 첫 번째 폰트".into(),
+        name: tr("나의 첫 번째 폰트").into(),
         family: "Doodle Hand".into(),
         created_at: timestamp(),
         updated_at: timestamp(),
@@ -460,10 +466,13 @@ pub fn preview<'a>(
     out
 }
 pub fn compose_hangul(p: &Project, text: &str) -> Result<(Artwork, Vec<Template>), String> {
-    let cp = text.chars().next().ok_or("한글 음절을 선택해 주세요.")? as u32;
+    let cp = text
+        .chars()
+        .next()
+        .ok_or(tr("한글 음절을 선택해 주세요."))? as u32;
     check(
         text.chars().count() == 1 && (0xac00..=0xd7a3).contains(&cp),
-        "완성형 한글 음절을 선택해 주세요.",
+        tr("완성형 한글 음절을 선택해 주세요."),
     )?;
     let n = cp - 0xac00;
     let l = n / 588;
@@ -503,9 +512,9 @@ pub fn compose_hangul(p: &Project, text: &str) -> Result<(Artwork, Vec<Template>
             .iter()
             .find(|g| g.text == c.to_string() && g.locale == "ko" && g.status == "edited")
             .ok_or_else(|| {
-                format!(
-                    "자모 {c} ({})를 먼저 작성해 주세요.",
-                    codepoints(&c.to_string())
+                tf(
+                    "자모 {0} ({1})를 먼저 작성해 주세요.",
+                    &[format!("{}", c), codepoints(&c.to_string()).to_string()],
                 )
             })?;
         for t in g.template.iter().chain(&g.sources) {
@@ -517,7 +526,7 @@ pub fn compose_hangul(p: &Project, text: &str) -> Result<(Artwork, Vec<Template>
             g.template
                 .as_ref()
                 .is_none_or(|t| t.permissions.edit && t.permissions.embed),
-            "이 자모의 템플릿은 조합 출력 권한을 확인해야 해요.",
+            tr("이 자모의 템플릿은 조합 출력 권한을 확인해야 해요."),
         )?;
         for s in &g.artwork.shapes {
             let mut s = s.clone();

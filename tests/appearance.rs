@@ -10,6 +10,7 @@ fn theme_preferences_survive_restart_and_system_mode_tracks_os_changes() {
     let path = root.join("appearance.json");
     for theme in [Theme::System, Theme::Light, Theme::Dark] {
         let prefs = Preferences {
+            language: doodle_core::i18n::Language::English,
             theme,
             reduce_motion: true,
             companion_renderer: Renderer::Vector,

@@ -1,9 +1,8 @@
 //! Native window controls for the undecorated desktop viewport.
 //! Kept above modal backdrops, like the OS caption controls they replace.
 use crate::appearance::Palette;
-use eframe::egui::{
-    self, Align, Align2, Color32, FontId, Pos2, Rect, RichText, Sense, Stroke, Vec2,
-};
+use crate::i18n::{format as tf, text as tr};
+use eframe::egui::{self, Align, Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 pub const TITLE_HEIGHT: f32 = 68.;
 pub const PROJECT_SIZE: f32 = 22.;
@@ -59,13 +58,10 @@ pub fn show(ctx: &egui::Context, project: &str, family: &str, palette: Palette) 
                     .layout(egui::Layout::left_to_right(Align::Center)),
                 |ui| {
                     let (logo, _) = ui.allocate_exact_size(Vec2::splat(36.), Sense::hover());
-                    ui.painter()
-                        .rect_filled(logo, 11., Color32::from_rgb(190, 83, 51));
-                    ui.painter().text(
-                        logo.center(),
-                        Align2::CENTER_CENTER,
-                        "d",
-                        FontId::proportional(30.),
+                    ui.painter().image(
+                        crate::brand::texture(ctx).id(),
+                        logo,
+                        Rect::from_min_max(Pos2::ZERO, Pos2::new(1., 1.)),
                         Color32::WHITE,
                     );
                     ui.label(RichText::new("Doodle Font").size(19.).strong());
@@ -85,7 +81,7 @@ pub fn show(ctx: &egui::Context, project: &str, family: &str, palette: Palette) 
                             .on_hover_text(project);
                             ui.add(
                                 egui::Label::new(
-                                    RichText::new(format!("폰트 패밀리 · {family}"))
+                                    RichText::new(tf("폰트 패밀리 · {0}", &[family.to_string()]))
                                         .size(FAMILY_SIZE)
                                         .color(palette.muted),
                                 )
@@ -98,13 +94,13 @@ pub fn show(ctx: &egui::Context, project: &str, family: &str, palette: Palette) 
                 },
             );
             for (index, label) in [
-                "최소화",
+                tr("최소화"),
                 if maximized {
-                    "이전 크기로 복원"
+                    tr("이전 크기로 복원")
                 } else {
-                    "최대화"
+                    tr("최대화")
                 },
-                "닫기",
+                tr("닫기"),
             ]
             .into_iter()
             .enumerate()

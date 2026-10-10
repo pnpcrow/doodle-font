@@ -1,4 +1,5 @@
 //! Shared input decision and preflight for local Gemma and both external providers.
+use crate::i18n::text as tr;
 use crate::{ai_progress::Progress, companion::Mood};
 use crate::{model::*, needle::Mode};
 use serde_json::{json, Value};
@@ -30,18 +31,18 @@ fn run_using(
 ) -> Result<Value, String> {
     check(
         payload["config"]["provider"] != "off",
-        "AI 사용이 꺼져 있어요.",
+        tr("AI 사용이 꺼져 있어요."),
     )?;
     let mode = match payload.get("decision") {
         Some(v) => serde_json::from_value::<Mode>(v.clone())
-            .map_err(|_| "판단 AI 옵션을 확인해 주세요.")?,
+            .map_err(|_| tr("판단 AI 옵션을 확인해 주세요."))?,
         None => Mode::Off,
     };
     let glyph = crate::ai::validate_target(&payload, payload["action"] != "assist")?;
-    check(!cancel.load(Ordering::Relaxed), "AI 작업을 취소했어요.")?;
+    check(!cancel.load(Ordering::Relaxed), tr("AI 작업을 취소했어요."))?;
     let decision = if mode == Mode::Needle {
         let _ = status.send(Progress::Animation(Mood::Thinking));
-        let _ = status.send("입력 판단 중 · Needle 3".into());
+        let _ = status.send(tr("입력 판단 중 · Needle 3").into());
         let reply = decide(payload["prompt"].as_str().unwrap_or(""), cancel.clone());
         let decision = plan(&payload, &glyph, reply.as_ref().ok());
         // Reuse the existing single inference. Only validated, bounded semantic cues
@@ -70,19 +71,19 @@ fn run_using(
         }
     };
     // The model cannot change mode, provider, consent, glyph identity, or protected state.
-    let _ = status.send("AI 실행 전 요청 확인 중".into());
-    check(!cancel.load(Ordering::Relaxed), "AI 작업을 취소했어요.")?;
+    let _ = status.send(tr("AI 실행 전 요청 확인 중").into());
+    check(!cancel.load(Ordering::Relaxed), tr("AI 작업을 취소했어요."))?;
     crate::ai::validate_target(&payload, payload["action"] != "assist")?;
     let mut result = if let Some(candidate) = decision.candidate {
-        let _ = status.send("간단한 편집 후보를 구성하는 중".into());
+        let _ = status.send(tr("간단한 편집 후보를 구성하는 중").into());
         candidate
     } else {
         if mode == Mode::Needle {
-            let _ = status.send("선택한 AI로 요청 전달 중".into());
+            let _ = status.send(tr("선택한 AI로 요청 전달 중").into());
         }
         crate::local_ai::run(payload, cancel.clone(), status)?
     };
-    check(!cancel.load(Ordering::Relaxed), "AI 작업을 취소했어요.")?;
+    check(!cancel.load(Ordering::Relaxed), tr("AI 작업을 취소했어요."))?;
     if mode == Mode::Needle {
         result["decisionNote"] = json!(decision.note);
     }
@@ -147,7 +148,7 @@ mod tests;
 pub fn plan(payload: &Value, glyph: &Glyph, reply: Option<&Value>) -> Decision {
     let fallback = || Decision {
         candidate: None,
-        note: FALLBACK,
+        note: tr(FALLBACK),
     };
     let Some(reply) = reply else {
         return fallback();
@@ -158,7 +159,7 @@ pub fn plan(payload: &Value, glyph: &Glyph, reply: Option<&Value>) -> Decision {
     if call["name"] == "use_assistant" || payload["action"] == "assist" {
         return Decision {
             candidate: None,
-            note: DELEGATE,
+            note: tr(DELEGATE),
         };
     }
     if crate::ai::validate_target(payload, true).is_err()
@@ -204,7 +205,7 @@ pub fn plan(payload: &Value, glyph: &Glyph, reply: Option<&Value>) -> Decision {
     Decision {
         candidate: Some(json!({"artwork":artwork,"sources":glyph.sources})),
         note:
-            "Needle 3의 판단을 확인해 간단한 편집 후보를 만들었어요. 생성 AI는 호출하지 않았습니다.",
+            tr("Needle 3의 판단을 확인해 간단한 편집 후보를 만들었어요. 생성 AI는 호출하지 않았습니다."),
     }
 }
 enum Command {

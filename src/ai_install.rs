@@ -1,4 +1,5 @@
 //! Native, resumable local model installation. All large files are streamed.
+use crate::i18n::{format as tf, text as tr};
 #[cfg(test)]
 #[path = "ai_install_tests.rs"]
 mod tests;
@@ -89,7 +90,7 @@ pub fn package_missing(root: &Path, package: Package) -> Vec<String> {
 }
 fn check_cancel(cancel: &AtomicBool) -> Result<(), String> {
     if cancel.load(Ordering::Relaxed) {
-        Err("설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다.".into())
+        Err(tr("설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다.").into())
     } else {
         Ok(())
     }
@@ -130,7 +131,7 @@ async fn fetch(
     let path = root.join(&asset.name);
     progress(
         tx,
-        format!("{} · 기존 파일 검증 중", asset.name),
+        tf("{0} · 기존 파일 검증 중", std::slice::from_ref(&asset.name)),
         done,
         total,
     );
@@ -149,10 +150,17 @@ async fn fetch(
             if offset < asset.bytes {
                 progress(
                     tx,
-                    format!(
-                        "{} · 연결 중{}",
-                        asset.name,
-                        if offset > 0 { " (이어받기)" } else { "" }
+                    tf(
+                        "{0} · 연결 중{1}",
+                        &[
+                            asset.name.to_string(),
+                            (if offset > 0 {
+                                tr(" (이어받기)")
+                            } else {
+                                ""
+                            })
+                            .to_string(),
+                        ],
                     ),
                     done + offset,
                     total,
@@ -164,9 +172,12 @@ async fn fetch(
                 let mut response = request
                     .send()
                     .await
-                    .map_err(|e| format!("연결 실패: {}", e.without_url()))?;
+                    .map_err(|e| tf("연결 실패: {0}", &[format!("{}", e.without_url())]))?;
                 if !response.status().is_success() {
-                    return Err(format!("서버 응답 {}", response.status().as_u16()));
+                    return Err(tf(
+                        "서버 응답 {0}",
+                        &[format!("{}", response.status().as_u16())],
+                    ));
                 }
                 if response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
                     let expected = format!("bytes {offset}-");
@@ -178,7 +189,7 @@ async fn fetch(
                             s.starts_with(&expected) && s.ends_with(&format!("/{}", asset.bytes))
                         })
                     {
-                        return Err("서버의 이어받기 범위가 올바르지 않아요.".into());
+                        return Err(tr("서버의 이어받기 범위가 올바르지 않아요.").into());
                     }
                 } else {
                     offset = 0;
@@ -189,19 +200,20 @@ async fn fetch(
                     .truncate(offset == 0)
                     .append(offset > 0)
                     .open(&partial)
-                    .map_err(|e| format!("저장 공간·권한을 확인해 주세요: {e}"))?;
+                    .map_err(|e| tf("저장 공간·권한을 확인해 주세요: {0}", &[format!("{}", e)]))?;
                 let mut last = Instant::now() - Duration::from_secs(1);
                 while let Some(chunk) = response
                     .chunk()
                     .await
-                    .map_err(|_| "다운로드 연결이 끊겼어요.")?
+                    .map_err(|_| tr("다운로드 연결이 끊겼어요."))?
                 {
                     check_cancel(cancel)?;
                     if offset + chunk.len() as u64 > asset.bytes {
-                        return Err("다운로드 크기가 예상보다 커요.".into());
+                        return Err(tr("다운로드 크기가 예상보다 커요.").into());
                     }
-                    file.write_all(&chunk)
-                        .map_err(|e| format!("저장 공간·권한을 확인해 주세요: {e}"))?;
+                    file.write_all(&chunk).map_err(|e| {
+                        tf("저장 공간·권한을 확인해 주세요: {0}", &[format!("{}", e)])
+                    })?;
                     offset += chunk.len() as u64;
                     if last.elapsed() > Duration::from_millis(200) {
                         progress(
@@ -220,21 +232,24 @@ async fn fetch(
                 }
                 file.sync_all().map_err(|e| e.to_string())?;
                 if offset != asset.bytes {
-                    return Err("다운로드가 중간에 끊겼어요.".into());
+                    return Err(tr("다운로드가 중간에 끊겼어요.").into());
                 }
             }
             progress(
                 tx,
-                format!("{} · SHA256 검증 중", asset.name),
+                tf("{0} · SHA256 검증 중", std::slice::from_ref(&asset.name)),
                 done + asset.bytes,
                 total,
             );
             if !verified(&partial, asset, cancel)? {
                 File::create(&partial).map_err(|e| e.to_string())?;
-                return Err("파일 검증에 실패했어요. 새로 내려받습니다.".into());
+                return Err(tr("파일 검증에 실패했어요. 새로 내려받습니다.").into());
             }
             fs::rename(&partial, &path).map_err(|e| {
-                format!("파일을 교체하지 못했어요. 실행 중인 다른 AI 작업을 종료해 주세요: {e}")
+                tf(
+                    "파일을 교체하지 못했어요. 실행 중인 다른 AI 작업을 종료해 주세요: {0}",
+                    &[format!("{}", e)],
+                )
             })?;
             Ok(())
         }
@@ -248,7 +263,14 @@ async fn fetch(
                 }
                 progress(
                     tx,
-                    format!("{} · 재시도 {}/3: {e}", asset.name, attempt + 2),
+                    tf(
+                        "{0} · 재시도 {1}/3: {2}",
+                        &[
+                            asset.name.to_string(),
+                            format!("{}", attempt + 2),
+                            e.to_string(),
+                        ],
+                    ),
                     done,
                     total,
                 );
@@ -262,7 +284,7 @@ fn extract(zip_path: &Path, destination: &Path, cancel: &AtomicBool) -> Result<(
     let mut archive = zip::ZipArchive::new(File::open(zip_path).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     if archive.len() > 512 {
-        return Err("실행기 압축 파일에 항목이 너무 많아요.".into());
+        return Err(tr("실행기 압축 파일에 항목이 너무 많아요.").into());
     }
     let mut total = 0u64;
     for i in 0..archive.len() {
@@ -270,10 +292,10 @@ fn extract(zip_path: &Path, destination: &Path, cancel: &AtomicBool) -> Result<(
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let name = entry
             .enclosed_name()
-            .ok_or("실행기 압축 경로가 올바르지 않아요.")?;
+            .ok_or(tr("실행기 압축 경로가 올바르지 않아요."))?;
         total = total.saturating_add(entry.size());
         if total > 400_000_000 || entry.unix_mode().is_some_and(|m| m & 0o170000 == 0o120000) {
-            return Err("실행기 압축 내용이 올바르지 않아요.".into());
+            return Err(tr("실행기 압축 내용이 올바르지 않아요.").into());
         }
         let path = destination.join(name);
         if entry.is_dir() {
@@ -301,15 +323,16 @@ fn install_runtime(root: &Path, cancel: &AtomicBool) -> Result<(), String> {
         extract(&root.join("runtime.zip"), &stage, cancel)?;
         check_cancel(cancel)?;
         if !stage.join("llama-server.exe").is_file() {
-            return Err("실행기가 압축 파일에 없어요.".into());
+            return Err(tr("실행기가 압축 파일에 없어요.").into());
         }
         let runtime = root.join("runtime");
         let backup = root.join(format!("runtime-backup-{}", uuid::Uuid::new_v4()));
         let had_runtime = runtime.exists();
         if had_runtime {
             fs::rename(&runtime, &backup).map_err(|e| {
-                format!(
-                    "실행기를 교체하지 못했어요. 다른 AI 작업을 종료하고 다시 시도해 주세요: {e}"
+                tf(
+                    "실행기를 교체하지 못했어요. 다른 AI 작업을 종료하고 다시 시도해 주세요: {0}",
+                    &[format!("{}", e)],
                 )
             })?;
         }
@@ -336,7 +359,8 @@ pub fn install_package(
     cancel: Arc<AtomicBool>,
     tx: Sender<Progress>,
 ) -> Result<(), String> {
-    fs::create_dir_all(&root).map_err(|e| format!("설치 폴더를 만들지 못했어요: {e}"))?;
+    fs::create_dir_all(&root)
+        .map_err(|e| tf("설치 폴더를 만들지 못했어요: {0}", &[format!("{}", e)]))?;
     let lock = OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -345,7 +369,7 @@ pub fn install_package(
         .open(root.join("install.lock"))
         .map_err(|e| e.to_string())?;
     lock.try_lock()
-        .map_err(|_| "다른 창에서 로컬 AI를 설치 중이에요. 완료 후 다시 확인해 주세요.")?;
+        .map_err(|_| tr("다른 창에서 로컬 AI를 설치 중이에요. 완료 후 다시 확인해 주세요."))?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -359,7 +383,7 @@ pub fn install_package(
             done+=asset.bytes;
         }
         if package == Package::Gemma {
-            progress(&tx,"실행기 압축 해제 중".into(),done,total);
+            progress(&tx,tr("실행기 압축 해제 중").into(),done,total);
             install_runtime(&root,&cancel)?;
             fs::write(root.join("LICENSE-llama.cpp.txt"),include_str!("../assets/ai-notices/LICENSE-llama.cpp.txt")).map_err(|e|e.to_string())?;
         }
@@ -369,7 +393,7 @@ pub fn install_package(
         let pending=root.join("installed.json.pending");
         fs::write(&pending,serde_json::to_vec_pretty(&manifest).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         fs::rename(pending,root.join("installed.json")).map_err(|e|e.to_string())?;
-        let missing=package_missing(&root,package);if !missing.is_empty(){return Err(format!("설치 후 확인이 필요해요: {}",missing.join(", ")));}
-        progress(&tx,"설치 완료 · AI를 사용할 수 있어요".into(),total,total);Ok(())
+        let missing=package_missing(&root,package);if !missing.is_empty(){return Err(tf("설치 후 확인이 필요해요: {0}", &[missing.join(", ").to_string()]));}
+        progress(&tx,tr("설치 완료 · AI를 사용할 수 있어요").into(),total,total);Ok(())
     })
 }

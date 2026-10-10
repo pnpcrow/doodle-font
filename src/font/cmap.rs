@@ -1,6 +1,7 @@
 //! Unicode mappings for both Windows BMP consumers and full-Unicode shapers.
 //! https://learn.microsoft.com/en-us/typography/opentype/spec/cmap
 use super::{check, B};
+use crate::i18n::text as tr;
 use std::collections::BTreeMap;
 
 fn bmp(map: &BTreeMap<u32, u16>) -> Result<B, String> {
@@ -37,7 +38,7 @@ fn bmp(map: &BTreeMap<u32, u16>) -> Result<B, String> {
         }
     }
     let length = 16 + cost[entries.len()] as usize + 8; // header and terminal segment
-    check(length <= u16::MAX as usize, "Windows 호환 문자 매핑 표가 너무 커요. 문자 모음별 분할 출력을 사용하거나 출력 범위를 줄여 주세요.")?;
+    check(length <= u16::MAX as usize, tr("Windows 호환 문자 매핑 표가 너무 커요. 문자 모음별 분할 출력을 사용하거나 출력 범위를 줄여 주세요."))?;
     let mut segments = vec![];
     let mut end = entries.len();
     while end > 0 {

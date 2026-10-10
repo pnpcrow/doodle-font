@@ -1,5 +1,6 @@
 //! Native motion director: semantic cues select clips; a continuous spring rig renders them.
 //! No inference runs on the render thread, at rest, or for individual frames.
+use crate::i18n::text as tr;
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Vec2};
 use std::f32::consts::{PI, TAU};
 #[path = "companion_placement.rs"]
@@ -17,8 +18,8 @@ pub enum Renderer {
 impl Renderer {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Image => "원본 그림",
-            Self::Vector => "벡터",
+            Self::Image => tr("원본 그림"),
+            Self::Vector => tr("벡터"),
         }
     }
 }
@@ -49,14 +50,14 @@ impl Mood {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Idle => "두들 · 함께 그려요",
-            Self::Thinking => "생각하고 있어요",
-            Self::Inspecting => "살펴보고 있어요",
-            Self::Drawing => "그림을 만들고 있어요",
-            Self::Coloring => "색을 고르고 있어요",
-            Self::Explaining => "이야기를 들려드려요",
-            Self::Done => "그림이 준비됐어요",
-            Self::NeedsHelp => "확인이 필요해요",
+            Self::Idle => tr("두들 · 함께 그려요"),
+            Self::Thinking => tr("생각하고 있어요"),
+            Self::Inspecting => tr("살펴보고 있어요"),
+            Self::Drawing => tr("그림을 만들고 있어요"),
+            Self::Coloring => tr("색을 고르고 있어요"),
+            Self::Explaining => tr("이야기를 들려드려요"),
+            Self::Done => tr("그림이 준비됐어요"),
+            Self::NeedsHelp => tr("확인이 필요해요"),
         }
     }
 }

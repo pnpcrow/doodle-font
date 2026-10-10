@@ -1,4 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
+use doodle_core::i18n::{self, Language};
+use doodle_core::i18n::{format as tf, text as tr};
 use doodle_core::{
     appearance::{self, Palette, Preferences, Theme},
     document::*,
@@ -17,6 +19,9 @@ const DRAW_INK: Color32 = Color32::from_rgb(48, 51, 46);
 #[cfg(feature = "ui-qa")]
 #[path = "companion_placement_qa.rs"]
 mod companion_placement_qa;
+#[cfg(feature = "ui-qa")]
+#[path = "language_qa.rs"]
+mod language_qa;
 #[cfg(feature = "ui-qa")]
 #[path = "layout_qa.rs"]
 mod layout_qa;
@@ -196,6 +201,7 @@ impl Studio {
         let mut fonts = egui::FontDefinitions::default();
         for (name, path) in [
             ("korean", "C:/Windows/Fonts/malgun.ttf"),
+            ("japanese", "C:/Windows/Fonts/YuGothR.ttc"),
             ("symbols", "C:/Windows/Fonts/seguisym.ttf"),
         ] {
             if let Ok(bytes) = std::fs::read(path) {
@@ -215,6 +221,7 @@ impl Studio {
                     .join("DoodleFont")
             });
         let preferences = Preferences::load(&root.join("appearance.json"));
+        i18n::set_language(preferences.language);
         appearance::install(ctx, preferences.theme);
         let save_path = root.join("project.json");
         let connections_path = root.join("ai-connections.dat");
@@ -226,7 +233,7 @@ impl Studio {
         let profile = connections.profile(&connections.provider);
         let api_key = connections.key(&connections.provider, &profile.endpoint);
         let (project, error) = if save_path.exists() {
-            match storage::read(&save_path){Ok(p)=>(p,String::new()),Err(e)=>(new_project(),format!("{e} 원본 자동 저장 파일은 보존됩니다. 프로젝트 열기로 백업을 복구해 주세요."))}
+            match storage::read(&save_path){Ok(p)=>(p,String::new()),Err(e)=>(new_project(),tf("{0} 원본 자동 저장 파일은 보존됩니다. 프로젝트 열기로 백업을 복구해 주세요.", std::slice::from_ref(&e)))}
         } else {
             (new_project(), String::new())
         };
@@ -285,7 +292,7 @@ impl Studio {
             export_text: String::new(),
             export_split: false,
             export_report: String::new(),
-            preview_text: "A little doodle, a lot of you.\n나의 글씨로 쓰는 오늘 ❤️ 😊".into(),
+            preview_text: tr("A little doodle, a lot of you.\n나의 글씨로 쓰는 오늘 ❤️ 😊").into(),
             preview_locale: "ko".into(),
             preview_size: 64.,
             preview_controls: true,
@@ -326,8 +333,8 @@ impl Studio {
             install_fraction: 0.,
             last_install_check: Instant::now(),
             job: None,
-            component_name: "나의 부품".into(),
-            template_provider: "사용자 가져오기".into(),
+            component_name: tr("나의 부품").into(),
+            template_provider: tr("사용자 가져오기").into(),
             template_version: "1.0".into(),
             template_source: String::new(),
             template_license: String::new(),
@@ -510,7 +517,7 @@ impl Studio {
                 self.dirty = false;
             }
             Err(e) => {
-                self.notify(format!("자동 저장 실패: {e}"));
+                self.notify(tf("자동 저장 실패: {0}", std::slice::from_ref(&e)));
                 self.save_error = true;
             }
         }
@@ -519,7 +526,9 @@ impl Studio {
         let (tx, rx) = mpsc::channel();
         self.job = Some(rx);
         let ctx = ctx.clone();
+        let language = i18n::current();
         std::thread::spawn(move || {
+            i18n::set_language(language);
             let result = work();
             let _ = tx.send(result);
             ctx.request_repaint();
@@ -566,27 +575,28 @@ impl Studio {
                             .motion
                             .react(doodle_core::companion::Mood::Idle);
                         if was_testing {
-                            self.connection_test_status = "연결 테스트를 취소했어요.".into();
+                            self.connection_test_status = tr("연결 테스트를 취소했어요.").into();
                             self.connection_test_error = false;
                             return;
                         }
                         if was_installing {
-                            self.install_error =
-                                "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다."
-                                    .into();
+                            self.install_error = tr(
+                                "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다.",
+                            )
+                            .into();
                             self.notify(self.install_error.clone());
                             return;
                         }
-                        self.notify("AI 작업을 취소했어요. 편집을 계속할 수 있어요.");
+                        self.notify(tr("AI 작업을 취소했어요. 편집을 계속할 수 있어요."));
                         self.ai_answer =
-                            "AI 작업을 취소했어요. 새 후보는 저장하지 않았습니다.".into();
+                            tr("AI 작업을 취소했어요. 새 후보는 저장하지 않았습니다.").into();
                         return;
                     }
                     match result {
                         Ok(Job::ConnectionTest(result)) => {
                             self.connection_test_error = result.is_err();
                             self.connection_test_status = match result {
-                                Ok(()) => "연결 성공 · 모델이 텍스트 요청에 응답했어요.".into(),
+                                Ok(()) => tr("연결 성공 · 모델이 텍스트 요청에 응답했어요.").into(),
                                 Err(e) => e,
                             };
                             self.companion.motion.react(if self.connection_test_error {
@@ -602,7 +612,10 @@ impl Studio {
                             if was_installing {
                                 self.install_error = e.clone();
                             } else if was_ai {
-                                self.ai_answer = format!("AI 작업을 완료하지 못했어요.\n{e}");
+                                self.ai_answer = tf(
+                                    "AI 작업을 완료하지 못했어요.\n{0}",
+                                    std::slice::from_ref(&e),
+                                );
                             }
                             self.notify(e)
                         }
@@ -614,8 +627,8 @@ impl Studio {
                             self.needle_installed = doodle_core::needle::installed();
                             self.install_error.clear();
                             self.notify(if package == doodle_core::ai_install::Package::Needle {
-                                "판단 AI 설치를 마쳤어요. 모든 AI 연결의 입력 앞단에서 사용할 수 있어요."
-                            } else { "Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요." });
+                                tr("판단 AI 설치를 마쳤어요. 모든 AI 연결의 입력 앞단에서 사용할 수 있어요.")
+                            } else { tr("Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요.") });
                         }
                         Ok(Job::AiReply(id, drawing, result)) => {
                             self.companion.motion.react(if drawing {
@@ -625,9 +638,9 @@ impl Studio {
                             });
                             match self.receive_ai_reply(&id, drawing, result) {
                                 Ok(()) => self.notify(if drawing {
-                                    "그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요."
+                                    tr("그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요.")
                                 } else {
-                                    "그림 상담을 마쳤어요."
+                                    tr("그림 상담을 마쳤어요.")
                                 }),
                                 Err(e) => {
                                     self.companion
@@ -636,9 +649,9 @@ impl Studio {
                                     self.ai_answer = format!(
                                         "{}\n{e}",
                                         if drawing {
-                                            "후보를 만들지 못했어요."
+                                            tr("후보를 만들지 못했어요.")
                                         } else {
-                                            "그림 상담을 완료하지 못했어요."
+                                            tr("그림 상담을 완료하지 못했어요.")
                                         }
                                     );
                                     self.notify(e);
@@ -650,28 +663,33 @@ impl Studio {
                                 .reports
                                 .iter()
                                 .map(|r| {
-                                    format!(
-                                        "{} · {} · {}개 글리프 · {}\n{}\n{}",
-                                        r.family,
-                                        r.format.to_uppercase(),
-                                        r.glyph_count,
-                                        r.mode,
-                                        r.tables.join(" / "),
-                                        r.warnings.join("\n")
+                                    tf(
+                                        "{0} · {1} · {2}개 글리프 · {3}\n{4}\n{5}",
+                                        &[
+                                            r.family.to_string(),
+                                            r.format.to_uppercase().to_string(),
+                                            format!("{}", r.glyph_count),
+                                            r.mode.to_string(),
+                                            r.tables.join(" / ").to_string(),
+                                            r.warnings.join("\n").to_string(),
+                                        ],
                                     )
                                 })
                                 .collect::<Vec<_>>()
                                 .join("\n\n");
                             if let Some(path) = path {
-                                self.notify(format!("폰트를 저장했어요: {}", path.display()))
+                                self.notify(tf(
+                                    "폰트를 저장했어요: {0}",
+                                    &[format!("{}", path.display())],
+                                ))
                             } else {
-                                self.notify("출력 폰트의 구조를 검증했어요.");
+                                self.notify(tr("출력 폰트의 구조를 검증했어요."));
                             }
                         }
                         Ok(Job::FontPreview(bytes, report)) => {
                             self.actual_font = Some(bytes);
                             self.export_report = report;
-                            self.notify("실제 출력 폰트를 생성하고 검사했어요.");
+                            self.notify(tr("실제 출력 폰트를 생성하고 검사했어요."));
                         }
                         Ok(Job::Imported(p)) => {
                             self.project = p;
@@ -682,7 +700,9 @@ impl Studio {
                             self.reindex();
                             self.refresh_catalog();
                             self.changed();
-                            self.notify("프로젝트를 열었어요. 템플릿 원본과 후보도 복원했습니다.");
+                            self.notify(tr(
+                                "프로젝트를 열었어요. 템플릿 원본과 후보도 복원했습니다.",
+                            ));
                         }
                     }
                 }
@@ -696,7 +716,7 @@ impl Studio {
                         self.companion
                             .motion
                             .react(doodle_core::companion::Mood::NeedsHelp);
-                        self.ai_answer = "AI 작업이 중단되었어요. 다시 요청해 주세요.".into();
+                        self.ai_answer = tr("AI 작업이 중단되었어요. 다시 요청해 주세요.").into();
                     }
                     self.job = None;
                     self.ai_cancel = None;
@@ -705,10 +725,10 @@ impl Studio {
                         self.installing_ai = false;
                         self.install_progress = None;
                         self.install_error =
-                            "설치 작업이 중단되었어요. 다시 설치를 눌러 이어서 진행해 주세요."
+                            tr("설치 작업이 중단되었어요. 다시 설치를 눌러 이어서 진행해 주세요.")
                                 .into();
                     }
-                    self.notify("작업 스레드가 종료되었어요. 프로젝트는 유지됩니다.");
+                    self.notify(tr("작업 스레드가 종료되었어요. 프로젝트는 유지됩니다."));
                 }
                 Err(_) => {}
             }
@@ -734,9 +754,9 @@ impl Studio {
             return;
         }
         if self.save_error {
-            self.notify(
+            self.notify(tr(
                 "현재 작업을 사본으로 보관했어요. 기존 자동 저장 파일의 오류를 먼저 해결해 주세요.",
-            );
+            ));
             return;
         }
         self.project = new_project();
@@ -749,9 +769,9 @@ impl Studio {
         self.refresh_catalog();
         self.changed();
         self.save();
-        self.notify(format!(
-            "새 프로젝트를 만들었어요. 이전 작업: {}",
-            archive.display()
+        self.notify(tf(
+            "새 프로젝트를 만들었어요. 이전 작업: {0}",
+            &[format!("{}", archive.display())],
         ));
     }
     fn save_copy(&mut self) {
@@ -761,25 +781,25 @@ impl Studio {
             .save_file()
         {
             match storage::save(&path, &self.project) {
-                Ok(()) => self.notify("원본·승인본·후보를 포함해 프로젝트를 저장했어요."),
+                Ok(()) => self.notify(tr("원본·승인본·후보를 포함해 프로젝트를 저장했어요.")),
                 Err(e) => self.notify(e),
             }
         }
     }
     fn import_image(&mut self) {
         if !editable(&self.project.glyphs[self.selected]) {
-            self.notify("편집할 수 없는 글리프예요.");
+            self.notify(tr("편집할 수 없는 글리프예요."));
             return;
         }
         let Some(file) = rfd::FileDialog::new()
-            .add_filter("이미지", &["png", "jpg", "jpeg"])
+            .add_filter(tr("이미지"), &["png", "jpg", "jpeg"])
             .pick_file()
         else {
             return;
         };
         let result = (|| -> Result<Shape, String> {
             if std::fs::metadata(&file).map_err(|e| e.to_string())?.len() > 8_000_000 {
-                return Err("8MB 이하 이미지를 사용해 주세요.".into());
+                return Err(tr("8MB 이하 이미지를 사용해 주세요.").into());
             }
             let mut reader = image::ImageReader::open(file)
                 .map_err(|e| e.to_string())?
@@ -818,7 +838,40 @@ impl Studio {
     }
     fn appearance_options(&mut self, ui: &mut egui::Ui) {
         let old = self.preferences.clone();
-        ui.label("화면 테마");
+        ui.horizontal(|ui| {
+            ui.label(tr("표시 언어"));
+            let response = egui::ComboBox::from_id_salt("display-language")
+                .width(220.)
+                .selected_text(self.preferences.language.label())
+                .show_ui(ui, |ui| {
+                    for (index, language) in Language::ALL.into_iter().enumerate() {
+                        let choice = ui.selectable_value(
+                            &mut self.preferences.language,
+                            language,
+                            language.label(),
+                        );
+                        #[cfg(feature = "ui-qa")]
+                        {
+                            self.qa_settings.languages[index] = Some(choice.rect);
+                        }
+                        let _ = (index, choice);
+                    }
+                });
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_settings.language_menu = Some(response.response.rect);
+            }
+            let _ = response;
+        });
+        ui.label(
+            RichText::new(tr(
+                "메뉴와 안내 문구에 바로 적용됩니다. 작성한 글자와 프로젝트 내용은 바뀌지 않아요.",
+            ))
+            .small()
+            .color(self.palette.muted),
+        );
+        ui.add_space(8.);
+        ui.label(tr("화면 테마"));
         ui.horizontal(|ui| {
             for (index, theme) in [Theme::System, Theme::Light, Theme::Dark]
                 .into_iter()
@@ -837,16 +890,16 @@ impl Studio {
     }
     fn companion_options(&mut self, ui: &mut egui::Ui) {
         let old = self.preferences.clone();
-        ui.strong("컴패니언");
+        ui.strong(tr("컴패니언"));
         let motion = ui
-            .checkbox(&mut self.preferences.reduce_motion, "움직임 줄이기")
-            .on_hover_text("컴패니언과 패널의 애니메이션을 줄입니다.");
+            .checkbox(&mut self.preferences.reduce_motion, tr("움직임 줄이기"))
+            .on_hover_text(tr("컴패니언과 패널의 애니메이션을 줄입니다."));
         #[cfg(feature = "ui-qa")]
         {
             self.qa_settings.reduce_motion = Some(motion.rect);
         }
         let _ = motion;
-        ui.label("컴패니언 표현");
+        ui.label(tr("컴패니언 표현"));
         ui.horizontal(|ui| {
             use doodle_core::companion::Renderer;
             for (index, renderer) in [Renderer::Image, Renderer::Vector].into_iter().enumerate() {
@@ -861,7 +914,7 @@ impl Studio {
                 }
                 let _ = (index, response);
             }
-            let compare = ui.button("나란히 비교");
+            let compare = ui.button(tr("나란히 비교"));
             #[cfg(feature = "ui-qa")]
             {
                 self.qa_renderers[2] = Some(compare.rect);
@@ -873,7 +926,7 @@ impl Studio {
         });
         let reset = ui.add_enabled(
             self.preferences.companion_position.is_some(),
-            egui::Button::new("기본 위치로 되돌리기"),
+            egui::Button::new(tr("기본 위치로 되돌리기")),
         );
         #[cfg(feature = "ui-qa")]
         {
@@ -887,6 +940,8 @@ impl Studio {
     }
     fn save_preferences(&mut self, ctx: &egui::Context, old: Preferences) {
         if old != self.preferences {
+            i18n::set_language(self.preferences.language);
+            ctx.request_repaint();
             self.companion
                 .set_renderer(ctx, self.preferences.companion_renderer);
             ctx.set_theme(self.preferences.theme.preference());
@@ -899,7 +954,10 @@ impl Studio {
             .preferences
             .save(&self.save_path.with_file_name("appearance.json"))
         {
-            self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
+            self.notify(tf(
+                "화면 설정을 저장하지 못했어요: {0}",
+                std::slice::from_ref(&e),
+            ));
         }
     }
     fn top(&mut self, ctx: &egui::Context) {
@@ -924,9 +982,10 @@ impl Studio {
                         }
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 12.;
-                            for (i, label) in ["그리기", "문장 미리보기", "템플릿", "설정"]
-                                .iter()
-                                .enumerate()
+                            for (i, label) in
+                                [tr("그리기"), tr("문장 미리보기"), tr("템플릿"), tr("설정")]
+                                    .iter()
+                                    .enumerate()
                             {
                                 let tab = navigation_tab(ui, label, self.tab == i, self.palette);
                                 #[cfg(feature = "ui-qa")]
@@ -946,7 +1005,7 @@ impl Studio {
                                     if ui
                                         .add(
                                             egui::Button::new(
-                                                RichText::new("폰트 내보내기 ↗")
+                                                RichText::new(tr("폰트 내보내기 ↗"))
                                                     .color(Color32::WHITE),
                                             )
                                             .fill(Color32::from_rgb(190, 83, 51)),
@@ -955,7 +1014,7 @@ impl Studio {
                                     {
                                         self.export_open = true;
                                     }
-                                    let project_menu = ui.button("프로젝트");
+                                    let project_menu = ui.button(tr("프로젝트"));
                                     egui::Popup::from_toggle_button_response(&project_menu)
                                         .close_behavior(
                                             egui::PopupCloseBehavior::CloseOnClickOutside,
@@ -964,15 +1023,16 @@ impl Studio {
                                         .show(|ui| {
                                             self.project_options_ui(ui);
                                             ui.separator();
-                                            if ui.button("프로젝트 사본 저장").clicked() {
+                                            if ui.button(tr("프로젝트 사본 저장")).clicked()
+                                            {
                                                 ui.close();
                                                 self.save_copy();
                                             }
-                                            if ui.button("열기…").clicked() {
+                                            if ui.button(tr("열기…")).clicked() {
                                                 ui.close();
                                                 self.open_project(ctx);
                                             }
-                                            if ui.button("새 프로젝트").clicked() {
+                                            if ui.button(tr("새 프로젝트")).clicked() {
                                                 ui.close();
                                                 self.fresh_project();
                                             }
@@ -982,7 +1042,7 @@ impl Studio {
                                         self.qa_settings.project_menu = Some(project_menu.rect);
                                     }
                                     let _ = project_menu;
-                                    ui.menu_button("화면", |ui| self.appearance_options(ui));
+                                    ui.menu_button(tr("화면"), |ui| self.appearance_options(ui));
                                 },
                             );
                         });
@@ -1015,20 +1075,22 @@ impl Studio {
                         Color32::from_rgb(109, 140, 105)
                     }));
                     ui.small(if self.save_error {
-                        "저장 오류 · 프로젝트 저장으로 백업하세요"
+                        tr("저장 오류 · 프로젝트 저장으로 백업하세요")
                     } else if self.dirty {
-                        "저장 중…"
+                        tr("저장 중…")
                     } else {
-                        "이 기기에 저장됨"
+                        tr("이 기기에 저장됨")
                     });
                     ui.separator();
                     ui.add_sized(
                         [(ui.available_width() - 450.).max(80.), 20.],
                         egui::Label::new(
-                            RichText::new(format!(
-                                "{}  /  {}개 작업 글리프",
-                                self.project.name,
-                                self.project.glyphs.len()
+                            RichText::new(tf(
+                                "{0}  /  {1}개 작업 글리프",
+                                &[
+                                    self.project.name.to_string(),
+                                    format!("{}", self.project.glyphs.len()),
+                                ],
                             ))
                             .size(12.),
                         )
@@ -1037,7 +1099,7 @@ impl Studio {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add(
-                                egui::Button::new(RichText::new("도움말  ?").size(12.))
+                                egui::Button::new(RichText::new(tr("도움말  ?")).size(12.))
                                     .frame(false)
                                     .min_size(Vec2::new(64., 20.)),
                             )
@@ -1045,14 +1107,14 @@ impl Studio {
                         {
                             self.help = true;
                         }
-                        ui.small("두들 폰트 0.1.0");
+                        ui.small(tr("두들 폰트 0.1.0"));
                         if self.api_provider != "off" {
                             let restore = ui.add_sized(
                                 [106., 20.],
                                 egui::Button::new(if self.ai_dock_collapsed {
-                                    "어시스트 열기 ↑"
+                                    tr("어시스트 열기 ↑")
                                 } else {
-                                    "어시스트 접기 ↓"
+                                    tr("어시스트 접기 ↓")
                                 })
                                 .frame(false),
                             );
@@ -1072,7 +1134,7 @@ impl Studio {
                                 self.qa_dock.footer_spinner = Some(spinner.rect);
                             }
                             let _ = spinner;
-                            ui.small("처리 중");
+                            ui.small(tr("처리 중"));
                         }
                     });
                 });
@@ -1101,10 +1163,10 @@ impl Studio {
                 let old_group = self.group;
                 egui::ComboBox::from_id_salt("collection-picker")
                     .width(214.)
-                    .selected_text(GROUPS[self.group].1)
+                    .selected_text(tr(GROUPS[self.group].1))
                     .show_ui(ui, |ui| {
                         for (i, (_, name, _)) in GROUPS.iter().enumerate() {
-                            ui.selectable_value(&mut self.group, i, *name);
+                            ui.selectable_value(&mut self.group, i, tr(name));
                         }
                     });
                 if old_group != self.group {
@@ -1113,11 +1175,11 @@ impl Studio {
                 }
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!("{}개 문자", self.catalog.len()))
+                        RichText::new(tf("{0}개 문자", &[format!("{}", self.catalog.len())]))
                             .size(12.)
                             .color(self.palette.muted),
                     );
-                    if text_button(ui, "+ 문자 추가").clicked() {
+                    if text_button(ui, tr("+ 문자 추가")).clicked() {
                         self.add_open = true;
                     }
                 });
@@ -1125,14 +1187,17 @@ impl Studio {
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut self.search)
-                            .hint_text("글자 또는 U+0041 검색")
+                            .hint_text(tr("글자 또는 U+0041 검색"))
                             .desired_width(217.),
                     )
                     .changed()
                 {
                     self.filter();
                 }
-                if ui.checkbox(&mut self.only_done, "작성한 글자만").changed() {
+                if ui
+                    .checkbox(&mut self.only_done, tr("작성한 글자만"))
+                    .changed()
+                {
                     self.filter();
                 }
                 ui.add_space(8.);
@@ -1231,7 +1296,7 @@ impl Studio {
                                     r.clone().on_hover_text(format!(
                                         "{}\n{}",
                                         codepoints(text),
-                                        g.map_or("미작성", |g| status(&g.status))
+                                        g.map_or(tr("미작성"), |g| status(&g.status))
                                     ));
                                     if r.clicked() {
                                         clicked = Some(text.clone());
@@ -1313,7 +1378,7 @@ fn navigation_tab(
 ) -> egui::Response {
     let response = ui.add_sized(
         [
-            if label == "문장 미리보기" {
+            if label == tr("문장 미리보기") {
                 128.
             } else {
                 80.
@@ -1382,9 +1447,9 @@ impl Studio {
                         .frame(false),
                     )
                     .on_hover_text(if self.show_properties {
-                        "레이어·속성 접기"
+                        tr("레이어·속성 접기")
                     } else {
-                        "레이어·속성 펼치기"
+                        tr("레이어·속성 펼치기")
                     });
                 #[cfg(feature = "ui-qa")]
                 {
@@ -1397,7 +1462,7 @@ impl Studio {
                     ui.painter().with_clip_rect(bounds).text(
                         Pos2::new(bounds.left() + 18., bounds.top() + 28.),
                         Align2::LEFT_CENTER,
-                        "레이어 · 속성",
+                        tr("레이어 · 속성"),
                         FontId::proportional(16.),
                         self.palette.text.gamma_multiply(openness),
                     );
@@ -1405,7 +1470,7 @@ impl Studio {
                     ui.painter().text(
                         Pos2::new(bounds.center().x, bounds.top() + 64.),
                         Align2::CENTER_CENTER,
-                        "레이어\n속성",
+                        tr("레이어\n속성"),
                         FontId::proportional(11.),
                         self.palette.muted,
                     );
@@ -1451,7 +1516,7 @@ impl Studio {
                 let mut advance = g.artwork.advance;
                 ui.add_space(9.);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("글리프 속성").size(17.).strong());
+                    ui.label(RichText::new(tr("글리프 속성")).size(17.).strong());
                 });
                 let candidate_count = g.candidates.len();
                 ui.add_space(12.);
@@ -1466,9 +1531,9 @@ impl Studio {
                         chip(
                             ui,
                             match locale.as_str() {
-                                "ko" => "한국어 자형",
-                                "ja" => "일본어 자형",
-                                _ => "공통 자형",
+                                "ko" => tr("한국어 자형"),
+                                "ja" => tr("일본어 자형"),
+                                _ => tr("공통 자형"),
                             },
                         );
                     });
@@ -1476,22 +1541,25 @@ impl Studio {
                 chip(
                     ui,
                     match mapping.as_str() {
-                        "control" => "제어 문자 · 확인 전용",
-                        "custom" => "사용자 지정 문자열 매핑",
-                        "sequence" => "유니코드 시퀀스 · 원문 보존",
-                        "pua" => "사적 사용 영역 · 사용자 정의",
-                        _ => "단일 유니코드 문자",
+                        "control" => tr("제어 문자 · 확인 전용"),
+                        "custom" => tr("사용자 지정 문자열 매핑"),
+                        "sequence" => tr("유니코드 시퀀스 · 원문 보존"),
+                        "pua" => tr("사적 사용 영역 · 사용자 정의"),
+                        _ => tr("단일 유니코드 문자"),
                     },
                 );
                 if candidate_count > 0
                     && ui
-                        .button(format!("AI 후보 {candidate_count}개 보기 · 채택"))
+                        .button(tf(
+                            "AI 후보 {0}개 보기 · 채택",
+                            &[format!("{}", candidate_count)],
+                        ))
                         .clicked()
                 {
                     self.open_candidate_review();
                 }
                 ui.add_space(7.);
-                if ui.checkbox(&mut locked, "글리프 잠금").changed() {
+                if ui.checkbox(&mut locked, tr("글리프 잠금")).changed() {
                     self.edit(|g| {
                         g.locked = locked;
                         Ok(())
@@ -1513,7 +1581,11 @@ impl Studio {
                         });
                     }
                     ui.add_space(6.);
-                    ui.label(RichText::new("글자 폭").size(12.).color(self.palette.muted));
+                    ui.label(
+                        RichText::new(tr("글자 폭"))
+                            .size(12.)
+                            .color(self.palette.muted),
+                    );
                     if ui
                         .add(
                             egui::DragValue::new(&mut advance)
@@ -1524,7 +1596,7 @@ impl Studio {
                         .changed()
                     {
                         self.edit(|g| {
-                            check(editable(g), "템플릿 편집 권한이 없어요.")?;
+                            check(editable(g), tr("템플릿 편집 권한이 없어요."))?;
                             g.artwork.advance = advance;
                             if g.status == "missing" {
                                 g.status = "blank".into();
@@ -1537,13 +1609,16 @@ impl Studio {
                 ui.separator();
                 ui.add_space(10.);
                 ui.horizontal(|ui| {
-                    ui.strong("레이어");
+                    ui.strong(tr("레이어"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         chip(
                             ui,
-                            &format!(
-                                "{}개",
-                                self.project.glyphs[self.selected].artwork.shapes.len()
+                            &tf(
+                                "{0}개",
+                                &[format!(
+                                    "{}",
+                                    self.project.glyphs[self.selected].artwork.shapes.len()
+                                )],
                             ),
                         );
                     });
@@ -1577,7 +1652,7 @@ impl Studio {
                         if ui
                             .add_enabled(
                                 enabled,
-                                egui::Button::new(if lock { "잠김" } else { "잠금" })
+                                egui::Button::new(if lock { tr("잠김") } else { tr("잠금") })
                                     .frame(false)
                                     .min_size(Vec2::new(44., 28.)),
                             )
@@ -1623,7 +1698,7 @@ impl Studio {
                                     Ok(())
                                 });
                             }
-                            if !is_outline && ui.checkbox(&mut fill, "채우기").changed() {
+                            if !is_outline && ui.checkbox(&mut fill, tr("채우기")).changed() {
                                 self.edit(|g| {
                                     g.artwork.shapes[i].fill = fill;
                                     Ok(())
@@ -1631,7 +1706,7 @@ impl Studio {
                             }
                         });
                         if ui
-                            .add(egui::Slider::new(&mut opacity, 0.0..=1.).text("불투명도"))
+                            .add(egui::Slider::new(&mut opacity, 0.0..=1.).text(tr("불투명도")))
                             .changed()
                         {
                             self.edit(|g| {
@@ -1642,7 +1717,7 @@ impl Studio {
                         if !is_image
                             && !is_outline
                             && ui
-                                .add(egui::Slider::new(&mut stroke, 1.0..=180.).text("획 굵기"))
+                                .add(egui::Slider::new(&mut stroke, 1.0..=180.).text(tr("획 굵기")))
                                 .changed()
                         {
                             self.edit(|g| {
@@ -1687,7 +1762,7 @@ impl Studio {
                             });
                         }
                         ui.horizontal(|ui| {
-                            if text_button(ui, "복제").clicked() {
+                            if text_button(ui, tr("복제")).clicked() {
                                 self.edit(|g| {
                                     let mut s = g.artwork.shapes[i].clone();
                                     s.id = uid();
@@ -1701,7 +1776,7 @@ impl Studio {
                                     Ok(())
                                 });
                             }
-                            if text_button(ui, "위로").clicked()
+                            if text_button(ui, tr("위로")).clicked()
                                 && i + 1 < self.project.glyphs[self.selected].artwork.shapes.len()
                             {
                                 self.edit(|g| {
@@ -1710,14 +1785,14 @@ impl Studio {
                                 });
                                 self.layer = Some(i + 1);
                             }
-                            if text_button(ui, "아래로").clicked() && i > 0 {
+                            if text_button(ui, tr("아래로")).clicked() && i > 0 {
                                 self.edit(|g| {
                                     g.artwork.shapes.swap(i, i - 1);
                                     Ok(())
                                 });
                                 self.layer = Some(i - 1);
                             }
-                            if text_button(ui, "삭제").clicked() {
+                            if text_button(ui, tr("삭제")).clicked() {
                                 self.edit(|g| {
                                     g.artwork.shapes.remove(i);
                                     Ok(())
@@ -1725,13 +1800,13 @@ impl Studio {
                                 self.layer = None;
                             }
                         });
-                        if is_path && text_button(ui, "선 부드럽게 보정").clicked() {
+                        if is_path && text_button(ui, tr("선 부드럽게 보정")).clicked() {
                             self.edit(|g| {
                                 smooth(&mut g.artwork.shapes[i].points);
                                 Ok(())
                             });
                         }
-                        if is_image && text_button(ui, "이미지 → 단색 벡터 변환").clicked()
+                        if is_image && text_button(ui, tr("이미지 → 단색 벡터 변환")).clicked()
                         {
                             let polygons = font::polygons(
                                 &self.project.glyphs[self.selected].artwork.shapes[i],
@@ -1743,7 +1818,7 @@ impl Studio {
                                     }
                                     g.artwork.shapes[i].visible = false;
                                     g.artwork.shapes[i].locked = true;
-                                    g.artwork.shapes[i].name = "원본 이미지 · 숨김 보관".into();
+                                    g.artwork.shapes[i].name = tr("원본 이미지 · 숨김 보관").into();
                                     for pts in polys {
                                         let mut s = path(&pts);
                                         s.fill = true;
@@ -1760,14 +1835,14 @@ impl Studio {
                 ui.add_space(14.);
                 ui.separator();
                 ui.add_space(10.);
-                ui.strong("원본과 기준 디자인");
+                ui.strong(tr("원본과 기준 디자인"));
                 ui.add_space(8.);
                 let g = &self.project.glyphs[self.selected];
                 if let Some(t) = &g.template {
                     chip(ui, &format!("{} · v{}", t.name, t.version));
                     chip(ui, &format!("{} / {}", t.provider, t.license));
                 } else {
-                    chip(ui, "템플릿 연결 없음");
+                    chip(ui, tr("템플릿 연결 없음"));
                 }
                 let original = g.template.as_ref().and_then(|t| t.original.as_ref());
                 if let Some(art) = original {
@@ -1783,24 +1858,24 @@ impl Studio {
                     );
                 }
                 ui.add_enabled_ui(!locked && mapping != "control", |ui| {
-                    if ui.button("템플릿 원본으로 복원").clicked() {
+                    if ui.button(tr("템플릿 원본으로 복원")).clicked() {
                         self.edit(|g| restore(g, "template"));
                     }
                     ui.horizontal(|ui| {
-                        if ui.button("기준 저장").clicked() {
+                        if ui.button(tr("기준 저장")).clicked() {
                             self.edit(|g| {
                                 g.baseline = Some(g.artwork.clone());
                                 Ok(())
                             });
                         }
-                        if ui.button("기준 복원").clicked() {
+                        if ui.button(tr("기준 복원")).clicked() {
                             self.edit(|g| restore(g, "baseline"));
                         }
                     });
-                    if ui.button("사용자 정의 해제 · 시스템 표시").clicked() {
+                    if ui.button(tr("사용자 정의 해제 · 시스템 표시")).clicked() {
                         self.edit(|g| restore(g, "system"));
                     }
-                    if ui.button("선택한 변형에 그림 복사…").clicked() {
+                    if ui.button(tr("선택한 변형에 그림 복사…")).clicked() {
                         self.variant_targets.clear();
                         self.variant_open = true;
                     }
@@ -1808,9 +1883,9 @@ impl Studio {
                 ui.add_space(14.);
                 ui.separator();
                 ui.add_space(10.);
-                egui::CollapsingHeader::new("부품 보관함").show(ui, |ui| {
+                egui::CollapsingHeader::new(tr("부품 보관함")).show(ui, |ui| {
                     ui.text_edit_singleline(&mut self.component_name);
-                    if ui.button("현재 그림을 부품으로 저장").clicked() {
+                    if ui.button(tr("현재 그림을 부품으로 저장")).clicked() {
                         let g = &self.project.glyphs[self.selected];
                         self.project.components.push(Component {
                             id: uid(),
@@ -1832,13 +1907,13 @@ impl Studio {
                         if ui.button(format!("+ {name}")).clicked() {
                             let c = self.project.components[i].clone();
                             self.edit(|g| {
-                                check(editable(g), "글리프가 보호되어 있어요.")?;
+                                check(editable(g), tr("글리프가 보호되어 있어요."))?;
                                 check(
                                     c.template
                                         .iter()
                                         .chain(&c.sources)
                                         .all(|t| t.permissions.edit),
-                                    "부품의 템플릿에 편집 권한이 없어요.",
+                                    tr("부품의 템플릿에 편집 권한이 없어요."),
                                 )?;
                                 for t in c.template.into_iter().chain(c.sources) {
                                     if !g.sources.iter().any(|v| v.id == t.id) {
@@ -1855,17 +1930,17 @@ impl Studio {
                         }
                     }
                 });
-                egui::CollapsingHeader::new("AI 후보").show(ui, |ui| {
+                egui::CollapsingHeader::new(tr("AI 후보")).show(ui, |ui| {
                     if ui
                         .add_enabled(
                             self.job.is_none(),
-                            egui::Button::new("현재 글리프 후보 생성"),
+                            egui::Button::new(tr("현재 글리프 후보 생성")),
                         )
                         .clicked()
                     {
                         self.generate_ai(ui.ctx());
                     }
-                    if ui.button("후보 비교 화면 열기").clicked() {
+                    if ui.button(tr("후보 비교 화면 열기")).clicked() {
                         self.open_candidate_review();
                     }
                     let candidates: Vec<_> = self.project.glyphs[self.selected]
@@ -1894,7 +1969,7 @@ impl Studio {
                             );
                             ui.vertical(|ui| {
                                 chip(ui, &name);
-                                if text_button(ui, "채택").clicked() {
+                                if text_button(ui, tr("채택")).clicked() {
                                     self.edit(|g| accept(g, &id));
                                 }
                             });
@@ -1915,7 +1990,7 @@ impl Studio {
                     ui.disable();
                 }
                 if self.project.glyphs.is_empty() {
-                    ui.label("문자를 추가해 작업을 시작하세요.");
+                    ui.label(tr("문자를 추가해 작업을 시작하세요."));
                     return;
                 }
                 let g = &self.project.glyphs[self.selected];
@@ -1928,7 +2003,7 @@ impl Studio {
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label(
-                            RichText::new(format!("{}  ·  나의 글자", display(&text)))
+                            RichText::new(tf("{0}  ·  나의 글자", &[display(&text).to_string()]))
                                 .size(24.)
                                 .strong(),
                         );
@@ -1945,14 +2020,14 @@ impl Studio {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
                             .add_enabled(!self.redo.is_empty(), egui::Button::new("↪"))
-                            .on_hover_text("다시 실행 Ctrl+Y")
+                            .on_hover_text(tr("다시 실행 Ctrl+Y"))
                             .clicked()
                         {
                             self.undo(true)
                         }
                         if ui
                             .add_enabled(!self.history.is_empty(), egui::Button::new("↶"))
-                            .on_hover_text("실행 취소 Ctrl+Z")
+                            .on_hover_text(tr("실행 취소 Ctrl+Z"))
                             .clicked()
                         {
                             self.undo(false)
@@ -1966,9 +2041,10 @@ impl Studio {
                     .inner_margin(8)
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            for (i, label) in ["펜", "직선", "네모", "동그라미", "이동"]
-                                .iter()
-                                .enumerate()
+                            for (i, label) in
+                                [tr("펜"), tr("직선"), tr("네모"), tr("동그라미"), tr("이동")]
+                                    .iter()
+                                    .enumerate()
                             {
                                 if ui.selectable_label(self.tool == i, *label).clicked() {
                                     self.tool = i;
@@ -1981,16 +2057,16 @@ impl Studio {
                                     .range(1.0..=180.)
                                     .suffix(" px"),
                             );
-                            ui.checkbox(&mut self.fill, "채우기");
-                            if text_button(ui, "이미지 +").clicked() {
+                            ui.checkbox(&mut self.fill, tr("채우기"));
+                            if text_button(ui, tr("이미지 +")).clicked() {
                                 self.import_image()
                             }
                         });
                     });
                 ui.add_space(10.);
                 ui.horizontal(|ui| {
-                    ui.checkbox(&mut self.guides, "가이드");
-                    ui.checkbox(&mut self.ghost, "밑글자");
+                    ui.checkbox(&mut self.guides, tr("가이드"));
+                    ui.checkbox(&mut self.ghost, tr("밑글자"));
                     for hex in &self.project.palette {
                         if ui
                             .add(
@@ -2010,7 +2086,7 @@ impl Studio {
                                 .frame(false)
                                 .min_size(Vec2::splat(28.)),
                         )
-                        .on_hover_text("현재 색을 팔레트에 저장")
+                        .on_hover_text(tr("현재 색을 팔레트에 저장"))
                         .clicked()
                     {
                         let hex = format!(
@@ -2028,7 +2104,7 @@ impl Studio {
                         ui.add(
                             egui::Slider::new(&mut self.zoom, 0.6..=1.6)
                                 .show_value(false)
-                                .text("확대"),
+                                .text(tr("확대")),
                         );
                     });
                 });
@@ -2292,7 +2368,7 @@ impl Studio {
                                 let tool = self.tool;
                                 let layer = self.layer;
                                 self.edit(|g| {
-                                    check(editable(g), "글리프가 보호되어 있어요.")?;
+                                    check(editable(g), tr("글리프가 보호되어 있어요."))?;
                                     if tool == 4 {
                                         if let Some(i) = layer {
                                             g.artwork.shapes[i] = s;
@@ -2334,9 +2410,9 @@ impl Studio {
                     chip(
                         ui,
                         if enabled {
-                            "드래그해서 그려 보세요.  Ctrl+Z 실행 취소"
+                            tr("드래그해서 그려 보세요.  Ctrl+Z 실행 취소")
                         } else {
-                            "현재 글리프는 읽기 전용이에요."
+                            tr("현재 글리프는 읽기 전용이에요.")
                         },
                     );
                     if locale == "ko"
@@ -2344,11 +2420,11 @@ impl Studio {
                             .chars()
                             .next()
                             .is_some_and(|c| ('가'..='힣').contains(&c))
-                        && text_button(ui, "자모로 조합").clicked()
+                        && text_button(ui, tr("자모로 조합")).clicked()
                     {
                         match compose_hangul(&self.project, &text) {
                             Ok((a, sources)) => self.edit(|g| {
-                                check(editable(g), "글리프가 보호되어 있어요.")?;
+                                check(editable(g), tr("글리프가 보호되어 있어요."))?;
                                 g.artwork = a;
                                 for t in sources {
                                     if !g.sources.iter().any(|v| v.id == t.id) {
@@ -2433,64 +2509,72 @@ impl Studio {
     fn preview_ui(&mut self, ui: &mut egui::Ui) {
         ui.add_space(12.);
         ui.label(
-            RichText::new("글자가 모이면, 나의 이야기가 돼요.")
+            RichText::new(tr("글자가 모이면, 나의 이야기가 돼요."))
                 .size(28.)
                 .strong(),
         );
         ui.label(
-            RichText::new("작성한 그림과 시스템 대체 표시를 나란히 확인하세요.")
+            RichText::new(tr("작성한 그림과 시스템 대체 표시를 나란히 확인하세요."))
                 .color(self.palette.muted),
         );
         ui.add_space(24.);
         ui.horizontal(|ui| {
-            ui.add(egui::Slider::new(&mut self.preview_size, 24.0..=120.).text("크기"));
+            ui.add(egui::Slider::new(&mut self.preview_size, 24.0..=120.).text(tr("크기")));
             egui::ComboBox::from_id_salt("preview-locale")
                 .selected_text(match self.preview_locale.as_str() {
-                    "ko" => "한국어 자형",
-                    "ja" => "일본어 자형",
-                    _ => "공통 자형",
+                    "ko" => tr("한국어 자형"),
+                    "ja" => tr("일본어 자형"),
+                    _ => tr("공통 자형"),
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.preview_locale, "ko".into(), "한국어 자형");
-                    ui.selectable_value(&mut self.preview_locale, "ja".into(), "일본어 자형");
-                    ui.selectable_value(&mut self.preview_locale, "default".into(), "공통 자형");
+                    ui.selectable_value(&mut self.preview_locale, "ko".into(), tr("한국어 자형"));
+                    ui.selectable_value(&mut self.preview_locale, "ja".into(), tr("일본어 자형"));
+                    ui.selectable_value(
+                        &mut self.preview_locale,
+                        "default".into(),
+                        tr("공통 자형"),
+                    );
                 });
-            ui.checkbox(&mut self.preview_controls, "비출력 문자 표시");
+            ui.checkbox(&mut self.preview_controls, tr("비출력 문자 표시"));
         });
         ui.add_space(10.);
         ui.add(
             egui::TextEdit::multiline(&mut self.preview_text)
                 .desired_rows(3)
                 .desired_width(f32::INFINITY)
-                .hint_text("미리 볼 문장을 입력하세요"),
+                .hint_text(tr("미리 볼 문장을 입력하세요")),
         );
         ui.add_space(20.);
         egui::ScrollArea::vertical().show(ui,|ui|{
             egui::Frame::new().fill(Color32::from_rgb(255,254,251)).stroke(Stroke::new(1_f32,self.palette.line)).corner_radius(16).inner_margin(24).show(ui,|ui|{ui.visuals_mut().override_text_color=Some(DRAW_INK);ui.visuals_mut().weak_text_color=Some(Palette::new(false).muted);
-                ui.horizontal(|ui|{chip(ui,"PROJECT PREVIEW");chip(ui,"● 프로젝트 그림");ui.label(RichText::new("○ 시스템 대체").size(11.).color(Palette::new(false).muted));});ui.add_space(20.);
+                ui.horizontal(|ui|{chip(ui,"PROJECT PREVIEW");chip(ui,tr("● 프로젝트 그림"));ui.label(RichText::new(tr("○ 시스템 대체")).size(11.).color(Palette::new(false).muted));});ui.add_space(20.);
                 for line in self.preview_text.split('\n'){ui.horizontal_wrapped(|ui|{ui.spacing_mut().item_spacing.x=0.;for(text,index)in preview(line,&self.project.glyphs,&self.preview_locale){let g=index.map(|i|&self.project.glyphs[i]);let size=self.preview_size;if let Some(g)=g.filter(|g|g.status=="edited"||g.status=="blank"){
-                    let width=(size*g.artwork.advance as f32/1000.).max(1.);let(rect,r)=ui.allocate_exact_size(Vec2::new(width,size+14.),Sense::hover());if g.status=="edited"{paint_art(ui.ctx(),ui.painter(),Rect::from_min_size(rect.min,Vec2::splat(size)),&g.artwork,&g.id,self.revision,&mut self.textures);}ui.painter().line_segment([rect.left_bottom(),rect.right_bottom()],Stroke::new(2_f32,Color32::from_rgb(119,150,111)));r.on_hover_text(format!("프로젝트 글리프 · {}",codepoints(text)));
+                    let width=(size*g.artwork.advance as f32/1000.).max(1.);let(rect,r)=ui.allocate_exact_size(Vec2::new(width,size+14.),Sense::hover());if g.status=="edited"{paint_art(ui.ctx(),ui.painter(),Rect::from_min_size(rect.min,Vec2::splat(size)),&g.artwork,&g.id,self.revision,&mut self.textures);}ui.painter().line_segment([rect.left_bottom(),rect.right_bottom()],Stroke::new(2_f32,Color32::from_rgb(119,150,111)));r.on_hover_text(tf("프로젝트 글리프 · {0}", &[codepoints(text).to_string()]));
                 }else if control(text){if self.preview_controls{ui.label(RichText::new(display(text)).size(size*0.4).color(Palette::new(false).muted));}}
-                else if let Some(tex)=system_texture(ui.ctx(),if self.preview_controls&&text==" "{"·"}else{text},&self.preview_locale,size*0.78,&mut self.system_fonts,&mut self.textures){ui.image((tex.id(),tex.size_vec2())).on_hover_text(format!("시스템 폰트 대체 · {}",codepoints(text)));}
+                else if let Some(tex)=system_texture(ui.ctx(),if self.preview_controls&&text==" "{"·"}else{text},&self.preview_locale,size*0.78,&mut self.system_fonts,&mut self.textures){ui.image((tex.id(),tex.size_vec2())).on_hover_text(tf("시스템 폰트 대체 · {0}", &[codepoints(text).to_string()]));}
                 else{ui.label(RichText::new(text).size(size*0.78).color(Palette::new(false).muted));}
                 }if self.preview_controls{ui.label(RichText::new("↵").size(16.).color(Palette::new(false).muted));}});ui.add_space(10.);}
             });ui.add_space(20.);
-            ui.horizontal(|ui|{ui.label(RichText::new("실제 출력 폰트 확인").size(20.).strong());if ui.add_enabled(self.job.is_none(),egui::Button::new("TTF 생성 · 검사")).clicked(){let p=self.project.clone();let locale=self.preview_locale.clone();self.spawn(ui.ctx(),move||{let r=font::export(&p,&font::ExportOptions{mode:Some("color".into()),locale:Some(locale),..Default::default()})?;let bytes=STANDARD.decode(&r.data).map_err(|e|e.to_string())?;let report=r.reports.iter().map(|r|format!("{}개 글리프 · {}\n{}",r.glyph_count,r.tables.join(" / "),r.warnings.join("\n"))).collect::<Vec<_>>().join("\n");Ok(Job::FontPreview(bytes,report))});}});
-            chip(ui,"실제 생성한 TTF를 다시 읽고 Rustybuzz로 문자 치환을 시험합니다. 외부 앱의 컬러·시퀀스 지원은 다를 수 있어요.");
+            ui.horizontal(|ui|{ui.label(RichText::new(tr("실제 출력 폰트 확인")).size(20.).strong());if ui.add_enabled(self.job.is_none(),egui::Button::new(tr("TTF 생성 · 검사"))).clicked(){let p=self.project.clone();let locale=self.preview_locale.clone();self.spawn(ui.ctx(),move||{let r=font::export(&p,&font::ExportOptions{mode:Some("color".into()),locale:Some(locale),..Default::default()})?;let bytes=STANDARD.decode(&r.data).map_err(|e|e.to_string())?;let report=r.reports.iter().map(|r|tf("{0}개 글리프 · {1}\n{2}", &[format!("{}", r.glyph_count), r.tables.join(" / ").to_string(), r.warnings.join("\n").to_string()])).collect::<Vec<_>>().join("\n");Ok(Job::FontPreview(bytes,report))});}});
+            chip(ui,tr("실제 생성한 TTF를 다시 읽고 Rustybuzz로 문자 치환을 시험합니다. 외부 앱의 컬러·시퀀스 지원은 다를 수 있어요."));
             if let Some(bytes)=&self.actual_font{
-                ui.add_space(10.);chip(ui,"이 아래는 실제 TTF만 사용합니다. 폰트에 없는 글자는 빈칸으로 표시됩니다.");
+                ui.add_space(10.);chip(ui,tr("이 아래는 실제 TTF만 사용합니다. 폰트에 없는 글자는 빈칸으로 표시됩니다."));
                 for line in self.preview_text.lines(){if let Some(tex)=font_texture(ui.ctx(),bytes,line,&self.preview_locale,self.preview_size,&format!("actual-{}",self.revision),&mut self.textures){egui::Frame::new().fill(Color32::from_rgb(255,254,251)).inner_margin(8).show(ui,|ui|{ui.image((tex.id(),tex.size_vec2()));});}}
-                egui::CollapsingHeader::new("폰트 구조 검사 결과").show(ui,|ui|{ui.label(&self.export_report);});
+                egui::CollapsingHeader::new(tr("폰트 구조 검사 결과")).show(ui,|ui|{ui.label(&self.export_report);});
             }
         });
     }
     fn templates_ui(&mut self, ui: &mut egui::Ui) {
         ui.add_space(12.);
-        ui.label(RichText::new("좋은 시작을 모아 두는 곳").size(28.).strong());
         ui.label(
-            RichText::new(
+            RichText::new(tr("좋은 시작을 모아 두는 곳"))
+                .size(28.)
+                .strong(),
+        );
+        ui.label(
+            RichText::new(tr(
                 "원본과 이용 조건을 함께 보관해요. 적용해도 문자 매핑은 그대로 유지됩니다.",
-            )
+            ))
             .color(self.palette.muted),
         );
         ui.add_space(24.);
@@ -2514,7 +2598,7 @@ impl Studio {
                             if let Some(art) = &t.original {
                                 paint_art(ui.ctx(), ui.painter(), rect, art, &t.id, self.revision, &mut self.textures);
                             } else {
-                                ui.painter().text(rect.center(), Align2::CENTER_CENTER, "원본 참조 없음", FontId::proportional(14.), self.palette.muted);
+                                ui.painter().text(rect.center(), Align2::CENTER_CENTER, tr("원본 참조 없음"), FontId::proportional(14.), self.palette.muted);
                             }
                             let row = |y, h| Rect::from_min_size(top + Vec2::new(0., y), Vec2::new(244., h));
                             ui.put(row(172., 26.), egui::Label::new(RichText::new(&t.name).size(18.).strong()).truncate()).on_hover_text(&t.name);
@@ -2525,8 +2609,8 @@ impl Studio {
                                     chip(ui, &t.attribution);
                                 });
                             });
-                            ui.put(row(300., 26.), egui::Label::new(RichText::new(format!("편집 {} / 폰트 포함 {} / AI {}", if t.permissions.edit {"가능"} else {"제한"}, if t.permissions.embed {"가능"} else {"제한"}, if t.permissions.ai {"가능"} else {"제한"})).size(11.).color(self.palette.muted)));
-                            let action = ui.put(row(336., 32.), egui::Button::new("선택한 글리프에 적용"));
+                            ui.put(row(300., 26.), egui::Label::new(RichText::new(tf("편집 {0} / 폰트 포함 {1} / AI {2}", &[(if t.permissions.edit {tr("가능")} else {tr("제한")}).to_string(), (if t.permissions.embed {tr("가능")} else {tr("제한")}).to_string(), (if t.permissions.ai {tr("가능")} else {tr("제한")}).to_string()])).size(11.).color(self.palette.muted)));
+                            let action = ui.put(row(336., 32.), egui::Button::new(tr("선택한 글리프에 적용")));
                             if action.clicked() { apply = Some(t.clone()); }
                             action.rect
                         });
@@ -2536,15 +2620,15 @@ impl Studio {
                 }
             });
             if let Some(t)=apply{self.edit(|g|apply_template(g,&t));self.tab=0;}
-            ui.add_space(24.);ui.separator();ui.add_space(18.);ui.label(RichText::new("내 템플릿 연결").size(22.).strong());ui.label("Apple·Samsung 등 제공자별 자산은 권한을 확인한 원본만 직접 연결하세요. 앱에는 해당 업체 그림이 포함되어 있지 않습니다.");ui.add_space(12.);
-            ui.horizontal(|ui|{if ui.button("템플릿 JSON 가져오기").clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Template JSON",&["json"]).pick_file(){let result=(||->Result<Template,String>{check(std::fs::metadata(&path).map_err(|e|e.to_string())?.len()<16_000_000,"템플릿은 16MB 이하여야 해요.")?;let t:Template=serde_json::from_slice(&std::fs::read(path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;t.validate()?;Ok(t)})();match result{Ok(t)=>{if self.project.templates.iter().any(|v|v.id==t.id){self.notify("같은 ID의 템플릿이 이미 있어요. 새 버전은 별도 ID로 가져오세요.");}else{self.project.templates.push(t);self.changed();}},Err(e)=>self.notify(e)}}}
-            if ui.button("시스템 기본으로 표시").clicked(){self.edit(|g|restore(g,"system"));self.tab=0;}});
-            ui.add_space(18.);egui::Grid::new("template-info").num_columns(2).spacing([20.,12.]).show(ui,|ui|{for(label,value)in [("제공자",&mut self.template_provider),("버전",&mut self.template_version),("출처 / 원본 위치",&mut self.template_source),("라이선스 / 이용 조건",&mut self.template_license),("출처 표시 문구",&mut self.template_attribution)]{ui.label(label);ui.add(egui::TextEdit::singleline(value).desired_width(440.));ui.end_row();}});
-            ui.horizontal_wrapped(|ui|{for(i,label)in ["표시 허용","편집 허용","폰트 포함 허용","원본 재배포 허용","AI 전송 허용"].iter().enumerate(){ui.checkbox(&mut self.template_rights[i],*label);}});
-            if ui.button("현재 그림을 새 템플릿으로 보관").clicked(){if self.template_license.trim().is_empty()||self.template_source.trim().is_empty(){self.notify("출처와 이용 조건을 기록해 주세요.");}else{let g=&self.project.glyphs[self.selected];if g.template.iter().chain(&g.sources).any(|t|!t.permissions.redistribute){self.notify("기존 템플릿은 원본 재배포 권한이 없어요.");}else{let mut r=self.template_rights;
+            ui.add_space(24.);ui.separator();ui.add_space(18.);ui.label(RichText::new(tr("내 템플릿 연결")).size(22.).strong());ui.label(tr("Apple·Samsung 등 제공자별 자산은 권한을 확인한 원본만 직접 연결하세요. 앱에는 해당 업체 그림이 포함되어 있지 않습니다."));ui.add_space(12.);
+            ui.horizontal(|ui|{if ui.button(tr("템플릿 JSON 가져오기")).clicked(){if let Some(path)=rfd::FileDialog::new().add_filter("Template JSON",&["json"]).pick_file(){let result=(||->Result<Template,String>{check(std::fs::metadata(&path).map_err(|e|e.to_string())?.len()<16_000_000,tr("템플릿은 16MB 이하여야 해요."))?;let t:Template=serde_json::from_slice(&std::fs::read(path).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;t.validate()?;Ok(t)})();match result{Ok(t)=>{if self.project.templates.iter().any(|v|v.id==t.id){self.notify(tr("같은 ID의 템플릿이 이미 있어요. 새 버전은 별도 ID로 가져오세요."));}else{self.project.templates.push(t);self.changed();}},Err(e)=>self.notify(e)}}}
+            if ui.button(tr("시스템 기본으로 표시")).clicked(){self.edit(|g|restore(g,"system"));self.tab=0;}});
+            ui.add_space(18.);egui::Grid::new("template-info").num_columns(2).spacing([20.,12.]).show(ui,|ui|{for(label,value)in [(tr("제공자"),&mut self.template_provider),(tr("버전"),&mut self.template_version),(tr("출처 / 원본 위치"),&mut self.template_source),(tr("라이선스 / 이용 조건"),&mut self.template_license),(tr("출처 표시 문구"),&mut self.template_attribution)]{ui.label(label);ui.add(egui::TextEdit::singleline(value).desired_width(440.));ui.end_row();}});
+            ui.horizontal_wrapped(|ui|{for(i,label)in [tr("표시 허용"),tr("편집 허용"),tr("폰트 포함 허용"),tr("원본 재배포 허용"),tr("AI 전송 허용")].iter().enumerate(){ui.checkbox(&mut self.template_rights[i],*label);}});
+            if ui.button(tr("현재 그림을 새 템플릿으로 보관")).clicked(){if self.template_license.trim().is_empty()||self.template_source.trim().is_empty(){self.notify(tr("출처와 이용 조건을 기록해 주세요."));}else{let g=&self.project.glyphs[self.selected];if g.template.iter().chain(&g.sources).any(|t|!t.permissions.redistribute){self.notify(tr("기존 템플릿은 원본 재배포 권한이 없어요."));}else{let mut r=self.template_rights;
                 let mut credits=self.template_attribution.clone();
                 for source in g.template.iter().chain(&g.sources){let p=&source.permissions;r[0]&=p.display;r[1]&=p.edit;r[2]&=p.embed;r[3]&=p.redistribute;r[4]&=p.ai;credits.push_str(&format!("\n{} v{} | {} | {} | {}",source.provider,source.version,source.source,source.license,source.attribution));}
-                self.project.templates.push(Template{id:uid(),name:format!("{} · {}",self.template_provider,g.name),provider:self.template_provider.clone(),version:self.template_version.clone(),source:self.template_source.clone(),license:self.template_license.clone(),attribution:credits,permissions:Permissions{display:r[0],edit:r[1],embed:r[2],redistribute:r[3],ai:r[4]},original:Some(g.artwork.clone())});self.changed();self.notify("현재 원본을 버전과 함께 보관했어요.");}}}
+                self.project.templates.push(Template{id:uid(),name:format!("{} · {}",self.template_provider,g.name),provider:self.template_provider.clone(),version:self.template_version.clone(),source:self.template_source.clone(),license:self.template_license.clone(),attribution:credits,permissions:Permissions{display:r[0],edit:r[1],embed:r[2],redistribute:r[3],ai:r[4]},original:Some(g.artwork.clone())});self.changed();self.notify(tr("현재 원본을 버전과 함께 보관했어요."));}}}
         });
     }
     fn generate_ai(&mut self, ctx: &egui::Context) {
@@ -2559,16 +2643,16 @@ impl Studio {
         if drawing {
             let artwork: Artwork =
                 serde_json::from_value(result["artwork"].clone()).map_err(|_| {
-                    "AI가 그림 후보를 반환하지 않았어요. 설명만 있는 응답은 채택할 수 없습니다."
+                    tr("AI가 그림 후보를 반환하지 않았어요. 설명만 있는 응답은 채택할 수 없습니다.")
                 })?;
             doodle_core::ai::validate_candidate(&artwork)?;
             let sources: Vec<Template> = if let Some(value) = result.get("sources") {
                 serde_json::from_value(value.clone())
-                    .map_err(|_| "후보의 출처 정보를 읽지 못했어요.")?
+                    .map_err(|_| tr("후보의 출처 정보를 읽지 못했어요."))?
             } else {
                 vec![]
             };
-            check(sources.len() <= 100, "후보 출처가 너무 많아요.")?;
+            check(sources.len() <= 100, tr("후보 출처가 너무 많아요."))?;
             for source in &sources {
                 source.validate()?;
             }
@@ -2577,24 +2661,26 @@ impl Studio {
                 .glyphs
                 .iter_mut()
                 .find(|g| g.id == id)
-                .ok_or("후보를 저장할 글리프를 찾을 수 없어요.")?;
+                .ok_or(tr("후보를 저장할 글리프를 찾을 수 없어요."))?;
             if !editable(g) || matches!(g.status.as_str(), "blank" | "unsupported") {
-                return Err("잠금·빈칸·미지원 항목에는 후보를 저장할 수 없어요.".into());
+                return Err(tr("잠금·빈칸·미지원 항목에는 후보를 저장할 수 없어요.").into());
             }
             if g.candidates.len() >= 50 {
-                return Err("이 글리프의 AI 후보가 50개여서 새 후보를 저장할 수 없어요.".into());
+                return Err(
+                    tr("이 글리프의 AI 후보가 50개여서 새 후보를 저장할 수 없어요.").into(),
+                );
             }
             let candidate = Candidate {
                 id: uid(),
-                name: format!("AI 후보 {}", g.candidates.len() + 1),
+                name: tf("AI 후보 {0}", &[format!("{}", g.candidates.len() + 1)]),
                 artwork,
                 sources,
             };
             self.candidate_review = Some((id.to_owned(), candidate.id.clone()));
             g.candidates.push(candidate);
-            self.ai_answer = format!(
-                "‘{}’의 그림 후보를 만들었어요. 후보 보기에서 비교하고 채택해 주세요.",
-                g.text
+            self.ai_answer = tf(
+                "‘{0}’의 그림 후보를 만들었어요. 후보 보기에서 비교하고 채택해 주세요.",
+                std::slice::from_ref(&g.text),
             );
             if let Some(note) = result["generationNote"].as_str() {
                 self.ai_answer.push_str(&format!("\n{note}"));
@@ -2604,7 +2690,7 @@ impl Studio {
             self.ai_answer = result["answer"]
                 .as_str()
                 .filter(|s| !s.trim().is_empty())
-                .ok_or("AI 상담 응답이 비어 있어요.")?
+                .ok_or(tr("AI 상담 응답이 비어 있어요."))?
                 .to_owned();
         }
         if let Some(note) = result["decisionNote"].as_str().filter(|s| !s.is_empty()) {
@@ -2617,7 +2703,9 @@ impl Studio {
             if let Some(candidate) = g.candidates.last() {
                 self.candidate_review = Some((g.id.clone(), candidate.id.clone()));
             } else {
-                self.notify("아직 저장된 후보가 없어요. 후보 만들기로 그림을 생성해 주세요.");
+                self.notify(tr(
+                    "아직 저장된 후보가 없어요. 후보 만들기로 그림을 생성해 주세요.",
+                ));
             }
         }
     }
@@ -2638,22 +2726,22 @@ impl Studio {
         let modal = egui::Modal::new("ai-candidate-review".into()).show(ctx, |ui| {
             ui.set_width(620.);
             ui.horizontal(|ui| {
-                ui.heading(format!("‘{}’ AI 후보", display(&g.text)));
+                ui.heading(tf("‘{0}’ AI 후보", &[display(&g.text).to_string()]));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    close = ui.button("닫기").clicked();
+                    close = ui.button(tr("닫기")).clicked();
                 });
             });
-            ui.label("그림을 비교하고 채택해 주세요. 채택 전에는 현재 그림이 바뀌지 않습니다.");
+            ui.label(tr("그림을 비교하고 채택해 주세요. 채택 전에는 현재 그림이 바뀌지 않습니다."));
             #[cfg(feature = "ui-qa")]
             match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
                 "ai-candidates" | "ai-candidate-accept" | "ai-typography" => {
-                    ui.label("화면 동작 검증용 모의 후보 · 실제 AI 생성 결과가 아닙니다.");
+                    ui.label(tr("화면 동작 검증용 모의 후보 · 실제 AI 생성 결과가 아닙니다."));
                 }
                 "ai-candidate-live" | "ai-typography-live" => {
-                    ui.label("실제 내장 AI 생성 결과 · 글자 정확도는 별도로 확인합니다.");
+                    ui.label(tr("실제 내장 AI 생성 결과 · 글자 정확도는 별도로 확인합니다."));
                 }
                 "decision-fast-live" | "decision-gemma-live" => {
-                    ui.label("실제 Needle 3 판단 경로 · 모의 응답을 사용하지 않습니다.");
+                    ui.label(tr("실제 Needle 3 판단 경로 · 모의 응답을 사용하지 않습니다."));
                 }
                 _ => {}
             }
@@ -2672,17 +2760,17 @@ impl Studio {
                 });
             if let Some(candidate) = g.candidates.iter().find(|c| c.id == candidate_id) {
                 if !candidate.sources.is_empty() {
-                    ui.label(RichText::new("공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.").size(12.).color(self.palette.muted));
+                    ui.label(RichText::new(tr("공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.")).size(12.).color(self.palette.muted));
                 }
                 ui.columns(2, |columns| {
                     for (column, (label, artwork, key)) in columns.iter_mut().zip([
                         (
-                            "현재 그림",
+                            tr("현재 그림"),
                             &g.artwork,
                             format!("review-current-{glyph_id}"),
                         ),
                         (
-                            "선택한 AI 후보",
+                            tr("선택한 AI 후보"),
                             &candidate.artwork,
                             format!("review-{candidate_id}"),
                         ),
@@ -2710,7 +2798,7 @@ impl Studio {
                     editable(g) && !matches!(g.status.as_str(), "blank" | "unsupported");
                 let response = ui.add_enabled(
                     can_apply,
-                    egui::Button::new("이 후보 채택").fill(self.palette.selection),
+                    egui::Button::new(tr("이 후보 채택")).fill(self.palette.selection),
                 );
                 #[cfg(feature = "ui-qa")]
                 {
@@ -2718,10 +2806,10 @@ impl Studio {
                 }
                 apply = response.clicked();
                 if !can_apply {
-                    ui.label("잠금·빈칸·미지원 상태를 해제한 뒤 채택할 수 있어요.");
+                    ui.label(tr("잠금·빈칸·미지원 상태를 해제한 뒤 채택할 수 있어요."));
                 }
             } else {
-                ui.label("선택한 후보가 없어요. 위에서 다른 후보를 골라 주세요.");
+                ui.label(tr("선택한 후보가 없어요. 위에서 다른 후보를 골라 주세요."));
             }
         });
         self.candidate_review = if close || modal.should_close() {
@@ -2746,7 +2834,9 @@ impl Studio {
                 self.tab = 0;
                 self.layer = None;
                 self.candidate_review = None;
-                self.notify("AI 후보를 적용했어요. 실행 취소로 이전 그림으로 돌아갈 수 있어요.");
+                self.notify(tr(
+                    "AI 후보를 적용했어요. 실행 취소로 이전 그림으로 돌아갈 수 있어요.",
+                ));
             }
         }
     }
@@ -2766,9 +2856,9 @@ impl Studio {
         self.install_fraction = 0.;
         self.ai_started = Instant::now();
         self.ai_status = if package == doodle_core::ai_install::Package::Needle {
-            "판단 AI 설치 준비 중"
+            tr("판단 AI 설치 준비 중")
         } else {
-            "Gemma 4 설치 준비 중"
+            tr("Gemma 4 설치 준비 중")
         }
         .into();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -2811,16 +2901,18 @@ impl Studio {
             self.save_connections();
         }
         if !self.ai_ready() {
-            self.notify("AI 연결 화면에서 로컬 모델 또는 API를 먼저 준비해 주세요.");
+            self.notify(tr(
+                "AI 연결 화면에서 로컬 모델 또는 API를 먼저 준비해 주세요.",
+            ));
             self.tab = 3;
             return;
         }
         let Some(g) = self.project.glyphs.get(self.selected).cloned() else {
-            self.notify("먼저 작업할 글리프를 선택해 주세요.");
+            self.notify(tr("먼저 작업할 글리프를 선택해 주세요."));
             return;
         };
         if drawing && g.candidates.len() >= 50 {
-            self.ai_answer = "이 글리프의 AI 후보가 50개여서 새 후보를 만들 수 없어요.".into();
+            self.ai_answer = tr("이 글리프의 AI 후보가 50개여서 새 후보를 만들 수 없어요.").into();
             self.notify(self.ai_answer.clone());
             return;
         }
@@ -2836,7 +2928,7 @@ impl Studio {
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.ai_cancel = Some(cancel.clone());
         self.ai_started = Instant::now();
-        self.ai_status = "AI 작업 준비 중".into();
+        self.ai_status = tr("AI 작업 준비 중").into();
         self.companion
             .motion
             .react(doodle_core::companion::Mood::Thinking);
@@ -2918,17 +3010,17 @@ impl Studio {
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new().size(20.));
                         ui.label(RichText::new(&self.ai_status).strong());
-                        ui.label(format!("{}초", self.ai_started.elapsed().as_secs()));
+                        ui.label(tf("{0}초", &[format!("{}", self.ai_started.elapsed().as_secs())]));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui
                                 .add_enabled(
                                     !cancel.load(std::sync::atomic::Ordering::Relaxed),
-                                    egui::Button::new("작업 취소"),
+                                    egui::Button::new(tr("작업 취소")),
                                 )
                                 .clicked()
                             {
                                 cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                                self.ai_status = "작업을 취소하고 편집을 다시 여는 중".into();
+                                self.ai_status = tr("작업을 취소하고 편집을 다시 여는 중").into();
                             }
                         });
                     });
@@ -2937,9 +3029,9 @@ impl Studio {
                     }
                     ui.label(
                         RichText::new(if self.installing_ai {
-                            "최초 설치에는 인터넷이 필요합니다. 취소해도 다음에 이어받을 수 있어요."
+                            tr("최초 설치에는 인터넷이 필요합니다. 취소해도 다음에 이어받을 수 있어요.")
                         } else {
-                            "작업 중에는 화면 입력과 편집이 잠깁니다."
+                            tr("작업 중에는 화면 입력과 편집이 잠깁니다.")
                         })
                         .size(12.)
                         .color(self.palette.muted),
@@ -2993,24 +3085,24 @@ impl Studio {
                     ui.style_mut().spacing.scroll = egui::style::ScrollStyle::solid();
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new("두들 어시스트")
+                            RichText::new(tr("두들 어시스트"))
                                 .strong()
                                 .color(self.palette.accent),
                         );
                         chip(
                             ui,
                             if self.api_provider == "local" {
-                                "로컬 AI"
+                                tr("로컬 AI")
                             } else if self.send_reference {
-                                "API · 그림 포함"
+                                tr("API · 그림 포함")
                             } else {
-                                "API · 텍스트만"
+                                tr("API · 텍스트만")
                             },
                         );
-                        ui.selectable_value(&mut self.ai_action, false, "그림 상담");
-                        ui.selectable_value(&mut self.ai_action, true, "후보 만들기");
+                        ui.selectable_value(&mut self.ai_action, false, tr("그림 상담"));
+                        ui.selectable_value(&mut self.ai_action, true, tr("후보 만들기"));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let collapse = ui.button("접기");
+                            let collapse = ui.button(tr("접기"));
                             #[cfg(feature = "ui-qa")]
                             {
                                 self.qa_dock.collapse = Some(collapse.rect);
@@ -3022,17 +3114,17 @@ impl Studio {
                     });
                     if !self.ai_ready() {
                         ui.horizontal(|ui| {
-                            ui.label("한 글자부터 가볍게 그려보세요. AI를 연결하면 두들이 도와드려요.");
-                            if ui.button("AI 연결하기").clicked() { self.tab=3; self.ai_dock_collapsed=true; }
+                            ui.label(tr("한 글자부터 가볍게 그려보세요. AI를 연결하면 두들이 도와드려요."));
+                            if ui.button(tr("AI 연결하기")).clicked() { self.tab=3; self.ai_dock_collapsed=true; }
                         });
                         return;
                     }
                     if self.ai_answer.is_empty() {
                         ui.horizontal_wrapped(|ui| {
                             for (label,prompt,drawing) in [
-                                ("획 다듬기", "현재 그림의 형태와 위치는 유지하고 획 굵기를 48로 통일해줘.",true),
-                                ("둥근 손글씨", "선택한 글자를 동글동글한 손글씨로 만들어줘.",true),
-                                ("균형 봐주기", "현재 글자의 기준선, 획의 균형과 간격을 살펴보고 개선할 점을 알려줘.",false),
+                                (tr("획 다듬기"), tr("현재 그림의 형태와 위치는 유지하고 획 굵기를 48로 통일해줘."),true),
+                                (tr("둥근 손글씨"), tr("선택한 글자를 동글동글한 손글씨로 만들어줘."),true),
+                                (tr("균형 봐주기"), tr("현재 글자의 기준선, 획의 균형과 간격을 살펴보고 개선할 점을 알려줘."),false),
                             ] {
                                 if text_button(ui, label).clicked() { self.ai_prompt=prompt.into(); self.ai_action=drawing; }
                             }
@@ -3045,7 +3137,7 @@ impl Studio {
                         .map_or(0, |g| g.candidates.len());
                     if candidate_count > 0
                         && ui
-                            .button(format!("저장된 후보 {candidate_count}개 보기 · 채택"))
+                            .button(tf("저장된 후보 {0}개 보기 · 채택", &[format!("{}", candidate_count)]))
                             .clicked()
                     {
                         self.open_candidate_review();
@@ -3101,9 +3193,9 @@ impl Studio {
                                         .desired_width(f32::INFINITY)
                                         .desired_rows(2)
                                         .hint_text(if self.ai_action {
-                                            "이 글자를 굵고 둥근 손글씨로 그려줘."
+                                            tr("이 글자를 굵고 둥근 손글씨로 그려줘.")
                                         } else {
-                                            "이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?"
+                                            tr("이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?")
                                         }),
                                 );
                                     })
@@ -3118,9 +3210,9 @@ impl Studio {
                         let send = ui.add_enabled(
                             self.job.is_none() && !self.ai_prompt.trim().is_empty(),
                             egui::Button::new(if self.ai_action {
-                                "그림 생성"
+                                tr("그림 생성")
                             } else {
-                                "상담하기"
+                                tr("상담하기")
                             })
                             .min_size(Vec2::new(70., 46.))
                             .fill(self.palette.selection),
@@ -3176,7 +3268,7 @@ impl Studio {
                     }
                     let companion = companion
                         .on_hover_cursor(egui::CursorIcon::Grab)
-                        .on_hover_text("드래그하여 이동 · 마우스 오른쪽 버튼으로 설정");
+                        .on_hover_text(tr("드래그하여 이동 · 마우스 오른쪽 버튼으로 설정"));
                     egui::Popup::context_menu(&companion)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                         .show(|ui| {
@@ -3211,9 +3303,9 @@ impl Studio {
             let response = ui
                 .add_enabled(
                     self.job.is_none(),
-                    egui::Checkbox::new(&mut enabled, "내장 판단 AI 사용"),
+                    egui::Checkbox::new(&mut enabled, tr("내장 판단 AI 사용")),
                 )
-                .on_hover_text("처음 켜면 판단 모델 약 37 MB를 자동으로 설치해요.");
+                .on_hover_text(tr("처음 켜면 판단 모델 약 37 MB를 자동으로 설치해요."));
             #[cfg(feature = "ui-qa")]
             {
                 self.qa_decision_button = Some(response.rect);
@@ -3223,36 +3315,36 @@ impl Studio {
                 chip(
                     ui,
                     if self.needle_installed {
-                        "준비됨"
+                        tr("준비됨")
                     } else {
-                        "설치 필요 · 37 MB"
+                        tr("설치 필요 · 37 MB")
                     },
                 );
                 if !self.needle_installed
                     && previous == Mode::Needle
                     && ui
-                        .add_enabled(self.job.is_none(), egui::Button::new("설치 다시 시도"))
+                        .add_enabled(self.job.is_none(), egui::Button::new(tr("설치 다시 시도")))
                         .clicked()
                 {
                     self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
                 }
             } else {
-                chip(ui, "입력 보조 · 선택 사항");
+                chip(ui, tr("입력 보조 · 선택 사항"));
             }
         });
         self.decision_mode = if enabled { Mode::Needle } else { Mode::Off };
         if enabled {
             chip(
                 ui,
-                "간단한 편집을 먼저 판단해요. 한국어 정확도는 아직 제한적이에요.",
+                tr("간단한 편집을 먼저 판단해요. 한국어 정확도는 아직 제한적이에요."),
             );
-            egui::CollapsingHeader::new("판단 AI 자세히")
+            egui::CollapsingHeader::new(tr("판단 AI 자세히"))
                 .id_salt("decision-details")
                 .show(ui, |ui| {
-                    ui.label("Needle 3 · 시험 기능");
-                    ui.label("그림을 만드는 AI와 별개로, 내장 AI와 API 모두에 적용돼요. PC에서 입력한 텍스트만 확인합니다.");
-                    ui.label("설치되지 않았거나 판단이 불확실하면 선택한 AI가 그대로 처리해요. 판단 결과는 두들의 동작 선택에도 쓰입니다.");
-                    if self.needle_installed && ui.add_enabled(self.job.is_none(), egui::Button::new("판단 모델 검증 · 복구")).clicked() {
+                    ui.label(tr("Needle 3 · 시험 기능"));
+                    ui.label(tr("그림을 만드는 AI와 별개로, 내장 AI와 API 모두에 적용돼요. PC에서 입력한 텍스트만 확인합니다."));
+                    ui.label(tr("설치되지 않았거나 판단이 불확실하면 선택한 AI가 그대로 처리해요. 판단 결과는 두들의 동작 선택에도 쓰입니다."));
+                    if self.needle_installed && ui.add_enabled(self.job.is_none(), egui::Button::new(tr("판단 모델 검증 · 복구"))).clicked() {
                         self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
                     }
                 });
@@ -3264,7 +3356,10 @@ impl Studio {
             })
             .save(&path)
             {
-                self.notify(format!("판단 AI 설정을 저장하지 못했어요: {e}"));
+                self.notify(tf(
+                    "판단 AI 설정을 저장하지 못했어요: {0}",
+                    std::slice::from_ref(&e),
+                ));
             }
             if enabled && !self.needle_installed {
                 self.install_package(ui.ctx(), doodle_core::ai_install::Package::Needle);
@@ -3280,14 +3375,14 @@ impl Studio {
             &self.api_key,
         );
         self.connections_pending = Some(Instant::now());
-        self.connections_status = "연결 설정을 저장하는 중이에요…".into();
+        self.connections_status = tr("연결 설정을 저장하는 중이에요…").into();
         self.connections_error = false;
     }
     fn save_connections(&mut self) {
         self.connections_pending = None;
         match self.connections.save(&self.connections_path) {
             Ok(()) => {
-                self.connections_status = "연결 설정 저장 완료 · 다음 실행에도 유지돼요".into();
+                self.connections_status = tr("연결 설정 저장 완료 · 다음 실행에도 유지돼요").into();
                 self.connections_error = false;
             }
             Err(error) => {
@@ -3323,17 +3418,17 @@ impl Studio {
         if self.connections_pending.is_some() {
             self.save_connections();
         }
-        self.connection_test_status = "연결 테스트 중…".into();
+        self.connection_test_status = tr("연결 테스트 중…").into();
         self.connection_test_error = false;
         self.testing_connection = true;
         self.ai_started = Instant::now();
-        self.ai_status = "API 연결을 확인하는 중".into();
+        self.ai_status = tr("API 연결을 확인하는 중").into();
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.ai_cancel = Some(cancel.clone());
         let config = serde_json::json!({"provider":self.api_provider,"endpoint":self.api_endpoint,"model":self.api_model,"key":self.api_key});
         self.spawn(ctx, move || {
             let result = (|| {
-                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|_| "연결 테스트를 시작하지 못했어요.")?;
+                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|_| tr("연결 테스트를 시작하지 못했어요."))?;
                 runtime.block_on(async {
                     let request = doodle_core::ai::test_connection(config);
                     tokio::pin!(request);
@@ -3341,7 +3436,7 @@ impl Studio {
                         tokio::select! {
                             result = &mut request => return result,
                             _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                                if cancel.load(std::sync::atomic::Ordering::Relaxed) { return Err("연결 테스트를 취소했어요.".into()); }
+                                if cancel.load(std::sync::atomic::Ordering::Relaxed) { return Err(tr("연결 테스트를 취소했어요.").into()); }
                             }
                         }
                     }
@@ -3351,32 +3446,32 @@ impl Studio {
         });
     }
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
-        ui.heading("내 작업실 설정");
+        ui.heading(tr("내 작업실 설정"));
         self.appearance_options(ui);
         ui.add_space(12.);
         self.companion_options(ui);
         ui.add_space(16.);
         ui.separator();
         ui.add_space(12.);
-        ui.label(RichText::new("AI 어시스트").size(20.).strong());
+        ui.label(RichText::new(tr("AI 어시스트")).size(20.).strong());
         egui::Frame::new()
             .fill(self.palette.raised)
             .corner_radius(12)
             .inner_margin(18)
             .show(ui, |ui| {
                 ui.set_width(ui.available_width().min(740.));
-                ui.label("그림 상담과 후보를 만들어 줄 AI");
+                ui.label(tr("그림 상담과 후보를 만들어 줄 AI"));
                 ui.horizontal_wrapped(|ui| {
                     for (provider, label) in [
-                        ("off", "사용 안 함"),
-                        ("local", "로컬 AI"),
-                        ("openai", "OpenAI 호환"),
-                        ("anthropic", "Anthropic 호환"),
+                        ("off", tr("사용 안 함")),
+                        ("local", tr("로컬 AI")),
+                        ("openai", tr("OpenAI 호환")),
+                        ("anthropic", tr("Anthropic 호환")),
                     ] {
                         let response = ui.selectable_label(self.api_provider == provider, label);
                         #[cfg(feature="ui-qa")]
                         { self.qa_ai_providers.insert(provider.into(), response.rect); }
-                        let response = if provider == "local" { response.on_hover_text("처음 선택하면 로컬 AI 약 3.4 GB를 자동으로 설치해요.") } else { response };
+                        let response = if provider == "local" { response.on_hover_text(tr("처음 선택하면 로컬 AI 약 3.4 GB를 자동으로 설치해요.")) } else { response };
                         if response.clicked() {
                             let changed = self.api_provider != provider;
                             self.select_ai_provider(provider);
@@ -3388,21 +3483,21 @@ impl Studio {
                 });
                 ui.add_space(8.);
                 if self.api_provider == "off" {
-                    chip(ui, "AI 없이 직접 그리기와 폰트 내보내기를 사용할 수 있어요.");
+                    chip(ui, tr("AI 없이 직접 그리기와 폰트 내보내기를 사용할 수 있어요."));
                 } else if self.api_provider == "local" {
                     ui.horizontal_wrapped(|ui| {
                         chip(
                             ui,
                             if self.local_installed {
-                                "사용 준비 완료 · 인터넷 없이 사용해요"
+                                tr("사용 준비 완료 · 인터넷 없이 사용해요")
                             } else {
-                                "설치 필요 · 약 3.4 GB"
+                                tr("설치 필요 · 약 3.4 GB")
                             },
                         );
                         if !self.local_installed {
                             let button = ui.add_enabled(
                                 self.job.is_none(),
-                                egui::Button::new("설치 다시 시도").fill(self.palette.selection),
+                                egui::Button::new(tr("설치 다시 시도")).fill(self.palette.selection),
                             );
                             #[cfg(feature = "ui-qa")]
                             {
@@ -3413,15 +3508,12 @@ impl Studio {
                             }
                         }
                     });
-                    egui::CollapsingHeader::new("모델 정보 · 설치 관리")
+                    egui::CollapsingHeader::new(tr("모델 정보 · 설치 관리"))
                         .id_salt("local-ai-details")
                         .show(ui, |ui| {
-                            ui.label("Gemma 4 E2B · 작업할 때만 읽고 끝나면 메모리를 반환해요.");
+                            ui.label(tr("Gemma 4 E2B · 작업할 때만 읽고 끝나면 메모리를 반환해요."));
                             ui.label(
-                                RichText::new(format!(
-                                    "설치 위치: {}",
-                                    doodle_core::local_ai::root().display()
-                                ))
+                                RichText::new(tf("설치 위치: {0}", &[format!("{}", doodle_core::local_ai::root().display())]))
                                 .size(12.)
                                 .color(self.palette.muted),
                             );
@@ -3429,20 +3521,20 @@ impl Studio {
                                 let missing = doodle_core::ai_install::missing(
                                     &doodle_core::local_ai::root(),
                                 );
-                                ui.label(format!("확인이 필요한 파일: {}", missing.join(", ")));
+                                ui.label(tf("확인이 필요한 파일: {0}", &[missing.join(", ").to_string()]));
                             }
                             ui.horizontal_wrapped(|ui| {
                                 if self.local_installed
                                     && ui
                                         .add_enabled(
                                             self.job.is_none(),
-                                            egui::Button::new("설치 파일 검증 · 복구"),
+                                            egui::Button::new(tr("설치 파일 검증 · 복구")),
                                         )
                                         .clicked()
                                 {
                                     self.install_ai(ui.ctx());
                                 }
-                                if ui.button("설치 상태 다시 확인").clicked() {
+                                if ui.button(tr("설치 상태 다시 확인")).clicked() {
                                     self.local_installed = doodle_core::local_ai::installed();
                                     self.last_install_check = Instant::now();
                                 }
@@ -3450,10 +3542,10 @@ impl Studio {
                         });
                 } else {
                     ui.horizontal_wrapped(|ui| {
-                        chip(ui, if self.ai_ready() { "연결 정보 입력됨" } else { "연결 설정 필요" });
+                        chip(ui, if self.ai_ready() { tr("연결 정보 입력됨") } else { tr("연결 설정 필요") });
                         if !self.api_model.trim().is_empty() { ui.label(&self.api_model); }
                     });
-                    let connection_header = egui::CollapsingHeader::new("연결 설정")
+                    let connection_header = egui::CollapsingHeader::new(tr("연결 설정"))
                         .id_salt(("api-connection-settings", self.api_provider.clone()))
                         .show(ui, |ui| {
                     let mut changed = false;
@@ -3461,7 +3553,7 @@ impl Studio {
                         .num_columns(2)
                         .spacing([16., 8.])
                         .show(ui, |ui| {
-                            ui.label("API 기본 주소");
+                            ui.label(tr("API 기본 주소"));
                             if ui
                                 .add(
                                     egui::TextEdit::singleline(&mut self.api_endpoint)
@@ -3474,19 +3566,19 @@ impl Studio {
                                 changed = true;
                             }
                             ui.end_row();
-                            ui.label("모델 이름");
+                            ui.label(tr("모델 이름"));
                             changed |= ui
                                 .add(
                                     egui::TextEdit::singleline(&mut self.api_model)
-                                        .hint_text("연결할 제공자의 정확한 모델 ID"),
+                                        .hint_text(tr("연결할 제공자의 정확한 모델 ID")),
                                 )
                                 .changed();
                             ui.end_row();
-                            ui.label("API 키");
+                            ui.label(tr("API 키"));
                             let key_input = ui.add(
                                 egui::TextEdit::singleline(&mut self.api_key)
                                     .password(true)
-                                    .hint_text("다음 실행에도 유지할 API 키"),
+                                    .hint_text(tr("다음 실행에도 유지할 API 키")),
                             );
                             #[cfg(feature = "ui-qa")]
                             {
@@ -3500,13 +3592,13 @@ impl Studio {
                     }
                     ui.add_space(4.);
                     ui.horizontal(|ui| {
-                        if ui.button("연결 설정 저장").clicked() {
+                        if ui.button(tr("연결 설정 저장")).clicked() {
                             self.connection_changed();
                             self.save_connections();
                         }
                         let forget = ui.add_enabled(
                             !self.api_key.is_empty(),
-                            egui::Button::new("저장된 키 삭제"),
+                            egui::Button::new(tr("저장된 키 삭제")),
                         );
                         #[cfg(feature = "ui-qa")]
                         {
@@ -3517,12 +3609,12 @@ impl Studio {
                             self.connection_changed();
                             self.save_connections();
                         }
-                        let test = ui.add_enabled(self.job.is_none() && self.ai_ready(), egui::Button::new("연결 테스트"))
-                            .on_hover_text("그림 없이 짧은 텍스트 요청을 보내요. 제공자의 API 사용량이 발생할 수 있어요.");
+                        let test = ui.add_enabled(self.job.is_none() && self.ai_ready(), egui::Button::new(tr("연결 테스트")))
+                            .on_hover_text(tr("그림 없이 짧은 텍스트 요청을 보내요. 제공자의 API 사용량이 발생할 수 있어요."));
                         #[cfg(feature="ui-qa")] { self.qa_test_connection = Some(test.rect); }
                         if test.clicked() { self.test_connection(ui.ctx()); }
                     });
-                    chip(ui, "연결 정보는 이 PC에 암호화해 자동 저장해요.");
+                    chip(ui, tr("연결 정보는 이 PC에 암호화해 자동 저장해요."));
                     });
                     #[cfg(feature="ui-qa")] { self.qa_connection_header = Some(connection_header.header_response.rect); }
                     let _ = connection_header;
@@ -3541,10 +3633,10 @@ impl Studio {
                     ui.colored_label(if self.connection_test_error { self.palette.accent } else { self.palette.muted }, &self.connection_test_status);
                 }
                 if self.api_provider != "off" { ui.horizontal_wrapped(|ui| {
-                    ui.checkbox(&mut self.ai_color, "컬러 그림 제안");
+                    ui.checkbox(&mut self.ai_color, tr("컬러 그림 제안"));
                     if self.api_provider != "local" {
-                        ui.checkbox(&mut self.send_reference, "현재 그림을 API에 함께 전송")
-                            .on_hover_text("선택한 글리프의 드로잉 영역 이미지와 벡터를 전송해요.");
+                        ui.checkbox(&mut self.send_reference, tr("현재 그림을 API에 함께 전송"))
+                            .on_hover_text(tr("선택한 글리프의 드로잉 영역 이미지와 벡터를 전송해요."));
                     }
                 }); }
                 ui.separator();
@@ -3554,7 +3646,7 @@ impl Studio {
                 }
                 if self.api_provider != "off" {
                     ui.separator();
-                    let test = ui.add_enabled(self.ai_ready(), egui::Button::new("생성 테스트…"));
+                    let test = ui.add_enabled(self.ai_ready(), egui::Button::new(tr("생성 테스트…")));
                     #[cfg(feature="ui-qa")] { self.qa_generation_test = Some(test.rect); }
                     if test.clicked() { self.generation_test_open = true; self.ai_dock_collapsed = true; }
                 }
@@ -3562,10 +3654,10 @@ impl Studio {
     }
     fn project_options_ui(&mut self, ui: &mut egui::Ui) {
         ui.set_max_width(340.);
-        ui.strong("프로젝트 정보");
+        ui.strong(tr("프로젝트 정보"));
         let mut name = self.project.name.clone();
         let mut family = self.project.family.clone();
-        ui.label("프로젝트 이름");
+        ui.label(tr("프로젝트 이름"));
         let name_input = ui.text_edit_singleline(&mut name);
         #[cfg(feature = "ui-qa")]
         {
@@ -3575,7 +3667,7 @@ impl Studio {
             self.project.name = name;
             self.changed();
         }
-        ui.label("폰트 패밀리");
+        ui.label(tr("폰트 패밀리"));
         let family_input = ui.text_edit_singleline(&mut family);
         #[cfg(feature = "ui-qa")]
         {
@@ -3586,13 +3678,13 @@ impl Studio {
             self.changed();
         }
         ui.add_space(10.);
-        chip(ui, "자동 저장 위치");
+        chip(ui, tr("자동 저장 위치"));
         let path = self.save_path.display().to_string();
         ui.add(
             egui::Label::new(RichText::new(&path).size(12.).color(self.palette.muted)).truncate(),
         )
         .on_hover_text(path);
-        if self.save_error && ui.button("자동 저장 다시 시도").clicked() {
+        if self.save_error && ui.button(tr("자동 저장 다시 시도")).clicked() {
             self.save_error = false;
             self.save();
         }
@@ -3611,7 +3703,10 @@ impl Studio {
                             .preferences
                             .save(&self.save_path.with_file_name("appearance.json"))
                         {
-                            self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
+                            self.notify(tf(
+                                "화면 설정을 저장하지 못했어요: {0}",
+                                std::slice::from_ref(&e),
+                            ));
                         }
                     }
                 }
@@ -3623,7 +3718,11 @@ impl Studio {
         if self.generation_test_open {
             let mut open = true;
             let mut generated = false;
-            egui::Window::new("생성 테스트")
+            egui::Window::new(tr("생성 테스트"))
+                .id(egui::Id::new("generation-test"))
+                .constrain_to(dialog_bounds(ctx))
+                .vscroll(true)
+                .max_height(dialog_bounds(ctx).height() - 80.)
                 .open(&mut open)
                 .default_width(520.)
                 .default_pos(ctx.content_rect().center() - Vec2::new(270., 140.))
@@ -3631,13 +3730,15 @@ impl Studio {
                 .collapsible(false)
                 .show(ctx, |ui| {
                     if let Some(glyph) = self.project.glyphs.get(self.selected) {
-                        ui.label(format!(
-                            "선택한 글자: {} · {}",
-                            display(&glyph.text),
-                            codepoints(&glyph.text)
+                        ui.label(tf(
+                            "선택한 글자: {0} · {1}",
+                            &[
+                                display(&glyph.text).to_string(),
+                                codepoints(&glyph.text).to_string(),
+                            ],
                         ));
                     }
-                    ui.label("원하는 그림 스타일을 입력해 주세요.");
+                    ui.label(tr("원하는 그림 스타일을 입력해 주세요."));
                     ui.add(
                         egui::TextEdit::multiline(&mut self.ai_prompt)
                             .desired_width(f32::INFINITY)
@@ -3648,7 +3749,7 @@ impl Studio {
                             self.job.is_none()
                                 && self.ai_ready()
                                 && !self.ai_prompt.trim().is_empty(),
-                            egui::Button::new("후보 생성").fill(self.palette.selection),
+                            egui::Button::new(tr("후보 생성")).fill(self.palette.selection),
                         )
                         .clicked()
                     {
@@ -3657,23 +3758,27 @@ impl Studio {
                     }
                     chip(
                         ui,
-                        "현재 글자에 바로 적용하지 않고, 후보를 만든 뒤 비교해요.",
+                        tr("현재 글자에 바로 적용하지 않고, 후보를 만든 뒤 비교해요."),
                     );
                 });
             self.generation_test_open = open && !generated;
         }
         if self.variant_open {
             let mut open = true;
-            egui::Window::new("선택한 변형에 그림 복사")
+            egui::Window::new(tr("선택한 변형에 그림 복사"))
+                .id(egui::Id::new("copy-variants"))
+                .constrain_to(dialog_bounds(ctx))
+                .vscroll(true)
+                .max_height(dialog_bounds(ctx).height() - 80.)
                 .open(&mut open)
                 .default_width(480.)
                 .show(ctx, |ui| {
                     if self.ai_cancel.is_some() {
                         ui.disable();
                     }
-                    ui.label(
+                    ui.label(tr(
                         "선택한 대상에만 그림을 복사합니다. 원문·지역·원본 템플릿은 유지됩니다.",
-                    );
+                    ));
                     let entries: Vec<_> = self
                         .project
                         .glyphs
@@ -3711,7 +3816,10 @@ impl Studio {
                         },
                     );
                     if ui
-                        .button(format!("선택한 {}개에 적용", self.variant_targets.len()))
+                        .button(tf(
+                            "선택한 {0}개에 적용",
+                            &[format!("{}", self.variant_targets.len())],
+                        ))
                         .clicked()
                     {
                         let original = self.selected;
@@ -3727,7 +3835,7 @@ impl Studio {
                         for index in targets {
                             self.selected = index;
                             self.edit(|g| {
-                                check(editable(g), "대상 글리프가 보호되어 있어요.")?;
+                                check(editable(g), tr("대상 글리프가 보호되어 있어요."))?;
                                 g.artwork = source.artwork.clone();
                                 for t in source.template.iter().chain(&source.sources) {
                                     if !g.sources.iter().any(|v| v.id == t.id) {
@@ -3749,7 +3857,11 @@ impl Studio {
         }
         if self.add_open {
             let mut open = true;
-            egui::Window::new("문자와 문자열 추가")
+            egui::Window::new(tr("문자와 문자열 추가"))
+                .id(egui::Id::new("add-characters"))
+                .constrain_to(dialog_bounds(ctx))
+                .vscroll(true)
+                .max_height(dialog_bounds(ctx).height() - 80.)
                 .open(&mut open)
                 .resizable(false)
                 .default_width(500.)
@@ -3757,10 +3869,12 @@ impl Studio {
                     if self.ai_cancel.is_some() {
                         ui.disable();
                     }
-                    ui.label("문장을 붙여 넣으면 사람이 한 글자로 읽는 묶음으로 추출해요.");
+                    ui.label(tr(
+                        "문장을 붙여 넣으면 사람이 한 글자로 읽는 묶음으로 추출해요.",
+                    ));
                     chip(
                         ui,
-                        "ZWJ·표시 선택자·분해된 악센트는 원문 그대로 보존합니다.",
+                        tr("ZWJ·표시 선택자·분해된 악센트는 원문 그대로 보존합니다."),
                     );
                     ui.add_space(10.);
                     ui.add(
@@ -3770,21 +3884,25 @@ impl Studio {
                     );
                     ui.horizontal(|ui| {
                         egui::ComboBox::from_id_salt("add-locale")
-                            .selected_text(&self.add_locale)
+                            .selected_text(match self.add_locale.as_str() {
+                                "ko" => tr("한국어 자형"),
+                                "ja" => tr("일본어 자형"),
+                                _ => tr("공통"),
+                            })
                             .show_ui(ui, |ui| {
                                 for (l, label) in [
-                                    ("default", "공통"),
-                                    ("ko", "한국어 자형"),
-                                    ("ja", "일본어 자형"),
+                                    ("default", tr("공통")),
+                                    ("ko", tr("한국어 자형")),
+                                    ("ja", tr("일본어 자형")),
                                 ] {
                                     ui.selectable_value(&mut self.add_locale, l.into(), label);
                                 }
                             });
-                        ui.checkbox(&mut self.add_custom, "전체 문자열 → 하나의 글리프");
+                        ui.checkbox(&mut self.add_custom, tr("전체 문자열 → 하나의 글리프"));
                     });
-                    if ui.button("추출해서 추가").clicked() {
+                    if ui.button(tr("추출해서 추가")).clicked() {
                         if self.add_text.len() > 1_000_000 {
-                            self.notify("100만 바이트 이하 문장을 사용해 주세요.");
+                            self.notify(tr("100만 바이트 이하 문장을 사용해 주세요."));
                         } else {
                             let texts = if self.add_custom {
                                 vec![self.add_text.clone()]
@@ -3802,19 +3920,20 @@ impl Studio {
                             self.group = 9;
                             self.refresh_catalog();
                             self.changed();
-                            self.notify(format!(
-                                "{n}개 항목을 추가했어요. 이미 있는 매핑은 유지됩니다."
+                            self.notify(tf(
+                                "{0}개 항목을 추가했어요. 이미 있는 매핑은 유지됩니다.",
+                                &[format!("{}", n)],
                             ));
                             self.add_open = false;
                         }
                     }
                     ui.add_space(14.);
                     ui.separator();
-                    ui.label("나만의 아이콘 · 사적 사용 영역 (PUA)");
+                    ui.label(tr("나만의 아이콘 · 사적 사용 영역 (PUA)"));
                     ui.horizontal(|ui| {
                         ui.label("U+");
                         ui.text_edit_singleline(&mut self.pua);
-                        if ui.button("추가").clicked() {
+                        if ui.button(tr("추가")).clicked() {
                             match u32::from_str_radix(self.pua.trim(), 16)
                                 .ok()
                                 .filter(|cp| (0xe000..=0xf8ff).contains(cp))
@@ -3835,7 +3954,7 @@ impl Studio {
                                     self.changed();
                                     self.add_open = false;
                                 }
-                                None => self.notify("PUA는 E000–F8FF 범위로 입력해 주세요."),
+                                None => self.notify(tr("PUA는 E000–F8FF 범위로 입력해 주세요.")),
                             }
                         }
                     });
@@ -3846,16 +3965,19 @@ impl Studio {
         }
         if self.export_open {
             let mut open = true;
-            egui::Window::new("나의 폰트 내보내기")
-                .open(&mut open).default_width(570.).default_height(700.).resizable(true)
-                .vscroll(true).max_height(ctx.content_rect().height() * 0.85)
+            let response = egui::Window::new(tr("나의 폰트 내보내기"))
+                .id(egui::Id::new("font-export"))
+                .constrain_to(dialog_bounds(ctx))
+                .open(&mut open).default_width(570.)
+                .default_height((dialog_bounds(ctx).height() - 80.).min(700.)).resizable(true)
+                .vscroll(true).max_height(dialog_bounds(ctx).height() - 80.)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("그린 글자를, 진짜 폰트로.").size(23.).strong());
+                    ui.label(RichText::new(tr("그린 글자를, 진짜 폰트로.")).size(23.).strong());
                     ui.add_space(12.);
-                    ui.label("폰트 패밀리 이름");
+                    ui.label(tr("폰트 패밀리 이름"));
                     if ui.text_edit_singleline(&mut self.project.family).changed() { self.changed(); }
                     ui.add_space(8.);
-                    ui.label("파일 포맷");
+                    ui.label(tr("파일 포맷"));
                     ui.horizontal_wrapped(|ui| {
                         for (value, label) in [("ttf", "TTF"), ("otf", "OTF"), ("woff2", "WOFF2"), ("woff", "WOFF")] {
                             let response = ui.selectable_value(&mut self.export_format, value.into(), label);
@@ -3865,42 +3987,42 @@ impl Studio {
                         }
                     });
                     chip(ui, match self.export_format.as_str() {
-                        "otf" => "컴퓨터에 설치 · 디자인 작업용 OpenType 폰트",
-                        "woff2" => "웹사이트용 · 압축된 웹폰트",
-                        "woff" => "웹사이트용 · WOFF 지원 환경에 제공하는 웹폰트",
-                        _ => "컴퓨터에 설치 · 일반 문서와 편집 작업용 TrueType 폰트",
+                        "otf" => tr("컴퓨터에 설치 · 디자인 작업용 OpenType 폰트"),
+                        "woff2" => tr("웹사이트용 · 압축된 웹폰트"),
+                        "woff" => tr("웹사이트용 · WOFF 지원 환경에 제공하는 웹폰트"),
+                        _ => tr("컴퓨터에 설치 · 일반 문서와 편집 작업용 TrueType 폰트"),
                     });
                     ui.add_space(8.);
-                    ui.label("글자 표현 방식");
+                    ui.label(tr("글자 표현 방식"));
                     egui::ComboBox::from_id_salt("export-mode")
-                        .selected_text(match self.export_mode.as_str() { "mono" => "단색 · 이미지 실루엣 변환", "bitmap" => "비트맵 · 그림 그대로", _ => "컬러 · 벡터 레이어" })
+                        .selected_text(match self.export_mode.as_str() { "mono" => tr("단색 · 이미지 실루엣 변환"), "bitmap" => tr("비트맵 · 그림 그대로"), _ => tr("컬러 · 벡터 레이어") })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.export_mode, "color".into(), "컬러 · 벡터 레이어");
-                            ui.selectable_value(&mut self.export_mode, "mono".into(), "단색 · 이미지 실루엣 변환");
-                            ui.selectable_value(&mut self.export_mode, "bitmap".into(), "비트맵 · 그림 그대로");
+                            ui.selectable_value(&mut self.export_mode, "color".into(), tr("컬러 · 벡터 레이어"));
+                            ui.selectable_value(&mut self.export_mode, "mono".into(), tr("단색 · 이미지 실루엣 변환"));
+                            ui.selectable_value(&mut self.export_mode, "bitmap".into(), tr("비트맵 · 그림 그대로"));
                         });
                     ui.add_space(8.);
-                    ui.label("출력 범위");
+                    ui.label(tr("출력 범위"));
                     egui::ComboBox::from_id_salt("export-locale")
-                        .selected_text(match self.export_locale.as_str() { "ko" => "한국어용", "ja" => "일본어용", "default" => "공통 자형만", _ => "통합 · 지역별 자형" })
+                        .selected_text(match self.export_locale.as_str() { "ko" => tr("한국어용"), "ja" => tr("일본어용"), "default" => tr("공통 자형만"), _ => tr("통합 · 지역별 자형") })
                         .show_ui(ui, |ui| {
-                            for (v, l) in [("combined", "통합 · 지역별 자형"), ("ko", "한국어용"), ("ja", "일본어용"), ("default", "공통 자형만")] {
+                            for (v, l) in [("combined", tr("통합 · 지역별 자형")), ("ko", tr("한국어용")), ("ja", tr("일본어용")), ("default", tr("공통 자형만"))] {
                                 ui.selectable_value(&mut self.export_locale, v.into(), l);
                             }
                         });
-                    ui.checkbox(&mut self.export_subset, "이 문장에 필요한 글리프만 출력");
+                    ui.checkbox(&mut self.export_subset, tr("이 문장에 필요한 글리프만 출력"));
                     if self.export_subset { ui.text_edit_multiline(&mut self.export_text); }
-                    ui.checkbox(&mut self.export_group, "현재 문자 모음만 출력");
-                    ui.checkbox(&mut self.export_split, "문자 모음별 분할 · ZIP");
+                    ui.checkbox(&mut self.export_group, tr("현재 문자 모음만 출력"));
+                    ui.checkbox(&mut self.export_split, tr("문자 모음별 분할 · ZIP"));
                     ui.add_space(12.);
                     let count = self.project.glyphs.iter().filter(|g| g.status == "edited" || g.status == "blank").count();
-                    ui.label(format!("프로젝트 작성 항목 {count}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다."));
-                    chip(ui, "시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요.");
-                    chip(ui, "컬러 모드에 이미지가 있으면 비트맵으로 출력합니다. 단색 모드는 이미지를 실루엣으로 변환해요.");
-                    chip(ui, "컬러·비트맵 표시 여부는 사용하는 앱이나 브라우저에 따라 달라집니다.");
+                    ui.label(tf("프로젝트 작성 항목 {0}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다.", &[format!("{}", count)]));
+                    chip(ui, tr("시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요."));
+                    chip(ui, tr("컬러 모드에 이미지가 있으면 비트맵으로 출력합니다. 단색 모드는 이미지를 실루엣으로 변환해요."));
+                    chip(ui, tr("컬러·비트맵 표시 여부는 사용하는 앱이나 브라우저에 따라 달라집니다."));
                     ui.add_space(12.);
                     ui.horizontal(|ui| {
-                        for (save, label) in [(false, "출력 전 검사"), (true, "파일로 저장")] {
+                        for (save, label) in [(false, tr("출력 전 검사")), (true, tr("파일로 저장"))] {
                             let button = ui.add_enabled(self.job.is_none(), egui::Button::new(label));
                             #[cfg(feature = "ui-qa")]
                             if !save { self.qa_export_check = Some(button.rect); }
@@ -3914,7 +4036,7 @@ impl Studio {
                                 } else { None };
                                 if save && path.is_none() { continue; }
                                 if path.as_ref().is_some_and(|p| !p.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case(ext))) {
-                                    self.notify(format!("선택한 포맷에 맞게 파일 이름을 .{ext}로 끝내 주세요."));
+                                    self.notify(tf("선택한 포맷에 맞게 파일 이름을 .{0}로 끝내 주세요.", &[ext.to_string()]));
                                     continue;
                                 }
                                 let p = self.project.clone();
@@ -3942,14 +4064,32 @@ impl Studio {
                         egui::ScrollArea::vertical().max_height(180.).show(ui, |ui| { ui.label(&self.export_report); });
                     }
                 });
+            #[cfg(feature = "ui-qa")]
+            {
+                self.qa_settings.export_window = response.as_ref().map(|r| r.response.rect);
+            }
+            let _ = response;
             if !open {
                 self.export_open = false;
             }
         }
         if self.help {
-            egui::Window::new("두들 폰트 사용하기").open(&mut self.help).default_width(580.).show(ctx,|ui|{ui.label(RichText::new("한 글자부터 시작하세요.").size(24.));for t in ["1. 왼쪽 문자 모음에서 글자를 고릅니다. 전체 한글·한자는 선택할 때만 작업 데이터가 만들어집니다.","2. 펜·직선·도형으로 그립니다. 레이어를 고르면 이동·크기·색·순서·잠금을 바꿀 수 있습니다.","3. 기준 저장을 눌러 승인본을 남겨 두세요. 템플릿 원본 복원과 실행 취소는 별개입니다.","4. 문자 추가에서 문장을 추출하거나 전체 문자열을 하나의 그림에 매핑할 수 있습니다.","5. 문장 미리보기에서 프로젝트 그림과 시스템 대체를 구분합니다. 출력한 TTF로 치환 결과도 검사하세요.","6. 폰트 내보내기에서 단색·컬러·비트맵 및 한국어·일본어·분할 출력을 선택합니다.","단축키: Ctrl+Z 실행 취소 · Ctrl+Y 다시 실행 · Ctrl+S 프로젝트 사본 저장","이미지 원본은 프로젝트에 PNG로 보존합니다. 단색 벡터 변환 전 그림은 기준 버전으로 남깁니다.","자모 조합은 U+1100 초성·U+1161 중성·U+11A8 종성의 작성 글리프를 이용합니다. 조합 후 각 음절을 개별 수정할 수 있습니다.","이 앱은 다른 기기나 모든 앱의 이모지를 일괄 변경하지 않습니다. 각 앱에서 출력 폰트를 선택해야 합니다."]{ui.add_space(9.);ui.label(t);}});
+            egui::Window::new(tr("두들 폰트 사용하기"))
+                .id(egui::Id::new("help"))
+                .constrain_to(dialog_bounds(ctx))
+                .vscroll(true).max_height(dialog_bounds(ctx).height() - 80.).open(&mut self.help).default_width(580.).show(ctx,|ui|{ui.label(RichText::new(tr("한 글자부터 시작하세요.")).size(24.));for t in [tr("1. 왼쪽 문자 모음에서 글자를 고릅니다. 전체 한글·한자는 선택할 때만 작업 데이터가 만들어집니다."),tr("2. 펜·직선·도형으로 그립니다. 레이어를 고르면 이동·크기·색·순서·잠금을 바꿀 수 있습니다."),tr("3. 기준 저장을 눌러 승인본을 남겨 두세요. 템플릿 원본 복원과 실행 취소는 별개입니다."),tr("4. 문자 추가에서 문장을 추출하거나 전체 문자열을 하나의 그림에 매핑할 수 있습니다."),tr("5. 문장 미리보기에서 프로젝트 그림과 시스템 대체를 구분합니다. 출력한 TTF로 치환 결과도 검사하세요."),tr("6. 폰트 내보내기에서 단색·컬러·비트맵 및 한국어·일본어·분할 출력을 선택합니다."),tr("단축키: Ctrl+Z 실행 취소 · Ctrl+Y 다시 실행 · Ctrl+S 프로젝트 사본 저장"),tr("이미지 원본은 프로젝트에 PNG로 보존합니다. 단색 벡터 변환 전 그림은 기준 버전으로 남깁니다."),tr("자모 조합은 U+1100 초성·U+1161 중성·U+11A8 종성의 작성 글리프를 이용합니다. 조합 후 각 음절을 개별 수정할 수 있습니다."),tr("이 앱은 다른 기기나 모든 앱의 이모지를 일괄 변경하지 않습니다. 각 앱에서 출력 폰트를 선택해야 합니다.")]{ui.add_space(9.);ui.label(t);}});
         }
     }
+}
+fn dialog_bounds(ctx: &egui::Context) -> Rect {
+    let screen = ctx.content_rect();
+    Rect::from_min_max(
+        Pos2::new(
+            screen.left() + 8.,
+            screen.top() + doodle_core::window_chrome::TITLE_HEIGHT + 8.,
+        ),
+        screen.right_bottom() - Vec2::new(8., 40.),
+    )
 }
 fn glyph_bytes(g: &Glyph) -> usize {
     fn art(a: &Artwork) -> usize {
@@ -3993,6 +4133,9 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if self.language_qa_input(ctx, input, &qa_view) {
+            return;
+        }
         if self.layout_qa_input(ctx, input, &qa_view) {
             return;
         }
@@ -4047,9 +4190,20 @@ impl eframe::App for Studio {
                 .events
                 .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
             let frame = ctx.cumulative_frame_nr();
+            input.time = Some(frame as f64 / 30.);
+            if frame == 5 {
+                input.events.push(egui::Event::PointerMoved(
+                    self.qa_settings.export_window.unwrap().center(),
+                ));
+                input.events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(0., -500.),
+                    modifiers: Default::default(),
+                });
+            }
             let rect = match frame {
                 3 | 4 => self.qa_export_formats.get(format).copied(),
-                6 | 7 => self.qa_export_check,
+                12 | 13 => self.qa_export_check,
                 _ => None,
             };
             if let Some(rect) = rect {
@@ -4057,7 +4211,7 @@ impl eframe::App for Studio {
                 input.events.push(egui::Event::PointerButton {
                     pos: rect.center(),
                     button: egui::PointerButton::Primary,
-                    pressed: frame == 3 || frame == 6,
+                    pressed: frame == 3 || frame == 12,
                     modifiers: Default::default(),
                 });
             }
@@ -4271,6 +4425,7 @@ impl eframe::App for Studio {
         }
     }
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        i18n::set_language(self.preferences.language);
         #[cfg(windows)]
         self.window_corners.sync(ctx, _frame);
         #[cfg(all(windows, feature = "ui-qa"))]
@@ -4294,6 +4449,7 @@ impl eframe::App for Studio {
                 }
                 self.settings_qa_setup(ctx, &qa_view);
                 self.layout_qa_setup(ctx, &qa_view);
+                self.language_qa_setup(ctx, &qa_view);
                 match std::env::var("DOODLE_QA_VIEW").unwrap_or_default().as_str() {
                     "renderer-write"
                     | "renderer-restored"
@@ -4926,6 +5082,7 @@ impl eframe::App for Studio {
             if (ctx.cumulative_frame_nr() == 12
                 && !connection_view.starts_with("settings-")
                 && !connection_view.starts_with("layout-")
+                && !connection_view.starts_with("language-")
                 && !install_flow
                 && !candidate_live
                 && !connection_flow
@@ -4933,6 +5090,7 @@ impl eframe::App for Studio {
                 && !floating_flow)
                 || self.settings_qa_ready(ctx, &connection_view)
                 || self.layout_qa_ready(ctx, &connection_view)
+                || self.language_qa_ready(ctx, &connection_view)
                 || export_ready
                 || (floating_flow && ctx.cumulative_frame_nr() == 62)
                 || connection_ready

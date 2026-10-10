@@ -1,4 +1,5 @@
 //! Optional text-only decision model. No API keys or images are sent to Needle.
+use crate::i18n::text as tr;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -69,13 +70,13 @@ pub fn infer_at(
     timeout: Duration,
 ) -> Result<Value, String> {
     if prompt.len() > 8000 {
-        return Err("판단할 입력이 너무 길어요.".into());
+        return Err(tr("판단할 입력이 너무 길어요.").into());
     }
     if cancel.load(Ordering::Relaxed) {
-        return Err("AI 작업을 취소했어요.".into());
+        return Err(tr("AI 작업을 취소했어요.").into());
     }
     if !crate::ai_install::package_missing(root, crate::ai_install::Package::Needle).is_empty() {
-        return Err("판단 모델이 설치되지 않았어요.".into());
+        return Err(tr("판단 모델이 설치되지 않았어요.").into());
     }
     // Unique fixed-schema file prevents two application windows from sharing mutable state.
     let tools_path = root.join(format!("tools-{}.json", uuid::Uuid::new_v4()));
@@ -112,7 +113,7 @@ pub fn infer_at(
         let mut server = Server(
             command
                 .spawn()
-                .map_err(|_| "판단 모델을 실행하지 못했어요.")?,
+                .map_err(|_| tr("판단 모델을 실행하지 못했어요."))?,
         );
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -124,28 +125,28 @@ pub fn infer_at(
                     .timeout(timeout).build().map_err(|e| e.to_string())?;
                 let endpoint = format!("http://127.0.0.1:{port}");
                 loop {
-                    if server.0.try_wait().map_err(|e| e.to_string())?.is_some() { return Err("판단 모델이 종료되었어요.".into()); }
+                    if server.0.try_wait().map_err(|e| e.to_string())?.is_some() { return Err(tr("판단 모델이 종료되었어요.").into()); }
                     if client.post(format!("{endpoint}/reset")).json(&json!({})).send().await.is_ok_and(|r| r.status().is_success()) { break; }
                     tokio::time::sleep(Duration::from_millis(30)).await;
                 }
                 // UTF-8 HTTP avoids the Windows runner's narrow-character argv conversion.
                 let mut response = client.post(format!("{endpoint}/complete")).json(&json!({"input":prompt})).send().await
-                    .map_err(|_| "판단 모델에 연결하지 못했어요.")?.error_for_status().map_err(|_| "판단 모델이 오류를 반환했어요.")?;
+                    .map_err(|_| tr("판단 모델에 연결하지 못했어요."))?.error_for_status().map_err(|_| tr("판단 모델이 오류를 반환했어요."))?;
                 let mut bytes = Vec::new();
-                while let Some(chunk) = response.chunk().await.map_err(|_| "판단 응답이 끊겼어요.")? {
-                    if bytes.len() + chunk.len() > 64 * 1024 { return Err("판단 응답이 너무 커요.".into()); }
+                while let Some(chunk) = response.chunk().await.map_err(|_| tr("판단 응답이 끊겼어요."))? {
+                    if bytes.len() + chunk.len() > 64 * 1024 { return Err(tr("판단 응답이 너무 커요.").into()); }
                     bytes.extend_from_slice(&chunk);
                 }
-                serde_json::from_slice(&bytes).map_err(|_| "판단 응답 형식이 맞지 않아요.".into())
+                serde_json::from_slice(&bytes).map_err(|_| tr("판단 응답 형식이 맞지 않아요.").into())
             };
             tokio::pin!(work);
             let deadline = tokio::time::sleep(timeout);
             tokio::pin!(deadline);
             loop { tokio::select! {
                 r = &mut work => return r,
-                _ = &mut deadline => return Err("판단 시간이 초과되었어요.".into()),
+                _ = &mut deadline => return Err(tr("판단 시간이 초과되었어요.").into()),
                 _ = tokio::time::sleep(Duration::from_millis(50)) => {
-                    if cancel.load(Ordering::Relaxed) { return Err("AI 작업을 취소했어요.".into()); }
+                    if cancel.load(Ordering::Relaxed) { return Err(tr("AI 작업을 취소했어요.").into()); }
                 }
             }}
         })

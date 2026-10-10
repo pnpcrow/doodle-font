@@ -1,12 +1,13 @@
+use crate::i18n::{format as tf, text as tr};
 use crate::model::Project;
 use std::{io::Write, path::Path};
 pub fn read(path: &Path) -> Result<Project, String> {
     let len = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
     if len > 64 * 1024 * 1024 {
-        return Err("64MB 이하 프로젝트를 열어 주세요.".into());
+        return Err(tr("64MB 이하 프로젝트를 열어 주세요.").into());
     }
     let p: Project = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("프로젝트 파일을 읽을 수 없어요: {e}"))?;
+        .map_err(|e| tf("프로젝트 파일을 읽을 수 없어요: {0}", &[format!("{}", e)]))?;
     p.validate()?;
     Ok(p)
 }
@@ -22,7 +23,9 @@ pub fn save(path: &Path, p: &Project) -> Result<(), String> {
     f.sync_all().map_err(|e| e.to_string())?;
     drop(f);
     if std::fs::metadata(&temp).map_err(|e| e.to_string())?.len() > 64 * 1024 * 1024 {
-        return Err("프로젝트가 64MB를 넘어요. 이미지를 줄이거나 프로젝트를 나눠 주세요.".into());
+        return Err(
+            tr("프로젝트가 64MB를 넘어요. 이미지를 줄이거나 프로젝트를 나눠 주세요.").into(),
+        );
     }
     if path.exists() {
         std::fs::copy(path, path.with_extension("backup.json")).map_err(|e| e.to_string())?;

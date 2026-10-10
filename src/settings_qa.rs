@@ -4,6 +4,10 @@ use std::io::{Read, Write};
 
 #[derive(Default)]
 pub(super) struct State {
+    pub language_menu: Option<Rect>,
+    pub languages: [Option<Rect>; 4],
+    pub language_project: Option<String>,
+    pub export_window: Option<Rect>,
     pub installs: usize,
     pub project_menu: Option<Rect>,
     pub project_name: Option<Rect>,

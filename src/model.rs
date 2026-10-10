@@ -1,3 +1,4 @@
+use crate::i18n::text as tr;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -118,17 +119,17 @@ impl Artwork {
             self.advance.is_finite()
                 && (0.0..=4000.0).contains(&self.advance)
                 && self.shapes.len() <= 5000,
-            "글리프 폭 또는 레이어 개수를 확인해 주세요.",
+            tr("글리프 폭 또는 레이어 개수를 확인해 주세요."),
         )?;
         let mut ids = HashSet::new();
         for s in &self.shapes {
             check(
                 ids.insert(&s.id) && bounded(&s.id, 100) && bounded(&s.name, 600),
-                "레이어 ID가 중복되었어요.",
+                tr("레이어 ID가 중복되었어요."),
             )?;
             check(
                 ["path", "rect", "ellipse", "image", "outline"].contains(&s.kind.as_str()),
-                "지원하지 않는 레이어예요.",
+                tr("지원하지 않는 레이어예요."),
             )?;
             check(
                 [s.x, s.y, s.width, s.height, s.stroke, s.opacity]
@@ -140,13 +141,13 @@ impl Artwork {
                     && (0.0..=4000.).contains(&s.height)
                     && (0.0..=300.).contains(&s.stroke)
                     && (0.0..=1.).contains(&s.opacity),
-                "그림 좌표·크기 범위를 확인해 주세요.",
+                tr("그림 좌표·크기 범위를 확인해 주세요."),
             )?;
             check(
                 s.color.len() == 7
                     && s.color.starts_with('#')
                     && s.color[1..].bytes().all(|c| c.is_ascii_hexdigit()),
-                "색상은 #RRGGBB 형식이어야 해요.",
+                tr("색상은 #RRGGBB 형식이어야 해요."),
             )?;
             check(
                 s.points.len() <= 10000
@@ -154,7 +155,7 @@ impl Artwork {
                         .iter()
                         .flatten()
                         .all(|v| v.is_finite() && v.abs() <= 4000.),
-                "선의 좌표를 확인해 주세요.",
+                tr("선의 좌표를 확인해 주세요."),
             )?;
             check(
                 s.contours.len() <= 2000
@@ -166,14 +167,14 @@ impl Artwork {
                                 .all(|v| v.is_finite() && v.abs() <= 4000.)
                     })
                     && (s.kind != "outline" || !s.contours.is_empty()),
-                "글자 윤곽선의 좌표와 개수를 확인해 주세요.",
+                tr("글자 윤곽선의 좌표와 개수를 확인해 주세요."),
             )?;
             if s.kind == "image" {
                 check(
                     s.src.as_ref().is_some_and(|v| {
                         v.starts_with("data:image/png;base64,") && v.len() <= 12_000_000
                     }),
-                    "8MB 이하 PNG 이미지를 사용해 주세요.",
+                    tr("8MB 이하 PNG 이미지를 사용해 주세요."),
                 )?;
             }
         }
@@ -194,7 +195,7 @@ impl Template {
             ]
             .iter()
             .all(|s| bounded(s, 4000)),
-            "템플릿 정보가 너무 길어요.",
+            tr("템플릿 정보가 너무 길어요."),
         )?;
         if let Some(a) = &self.original {
             a.validate()?;
@@ -206,7 +207,7 @@ impl Project {
     pub fn validate(&self) -> Result<(), String> {
         check(
             self.schema_version == 1,
-            "Doodle Font 버전 1 프로젝트가 아니에요.",
+            tr("Doodle Font 버전 1 프로젝트가 아니에요."),
         )?;
         check(
             !self.family.trim().is_empty()
@@ -219,13 +220,13 @@ impl Project {
                 ]
                 .iter()
                 .all(|s| bounded(s, 600)),
-            "프로젝트 이름을 확인해 주세요.",
+            tr("프로젝트 이름을 확인해 주세요."),
         )?;
         check(
             self.glyphs.len() <= 150000
                 && self.templates.len() <= 1000
                 && self.components.len() <= 1000,
-            "프로젝트 항목이 너무 많아요.",
+            tr("프로젝트 항목이 너무 많아요."),
         )?;
         let mut ids = HashSet::new();
         let mut maps = HashSet::new();
@@ -236,12 +237,12 @@ impl Project {
                         && c.starts_with('#')
                         && c[1..].bytes().all(|v| v.is_ascii_hexdigit())
                 }),
-            "팔레트에는 최대 64개의 #RRGGBB 색상을 보관해요.",
+            tr("팔레트에는 최대 64개의 #RRGGBB 색상을 보관해요."),
         )?;
         for g in &self.glyphs {
             check(
                 ids.insert(&g.id) && maps.insert((&g.text, &g.locale)),
-                "글리프 ID 또는 문자·지역 매핑이 중복되었어요.",
+                tr("글리프 ID 또는 문자·지역 매핑이 중복되었어요."),
             )?;
             check(
                 !g.text.is_empty()
@@ -250,23 +251,23 @@ impl Project {
                     && g.group.len() <= 100
                     && g.text.chars().count() <= 128
                     && ["default", "ko", "ja"].contains(&g.locale.as_str()),
-                "문자 매핑을 확인해 주세요.",
+                tr("문자 매핑을 확인해 주세요."),
             )?;
             check(
                 ["missing", "edited", "blank", "system", "unsupported"]
                     .contains(&g.status.as_str())
                     && ["unicode", "sequence", "custom", "pua", "control"]
                         .contains(&g.mapping.as_str()),
-                "글리프 상태를 확인해 주세요.",
+                tr("글리프 상태를 확인해 주세요."),
             )?;
             check(
                 g.candidates.len() <= 50,
-                "AI 후보는 최대 50개까지 보관해요.",
+                tr("AI 후보는 최대 50개까지 보관해요."),
             )?;
             g.artwork.validate()?;
             check(
                 g.sources.len() <= 100,
-                "참조 템플릿은 글리프당 100개 이하여야 해요.",
+                tr("참조 템플릿은 글리프당 100개 이하여야 해요."),
             )?;
             for t in &g.sources {
                 t.validate()?;
@@ -274,7 +275,7 @@ impl Project {
             check(
                 !crate::document::control(&g.text)
                     || (g.mapping == "control" && g.status == "unsupported"),
-                "제어 문자는 확인 전용 상태로 보관해야 해요.",
+                tr("제어 문자는 확인 전용 상태로 보관해야 해요."),
             )?;
             if let Some(t) = &g.template {
                 t.validate()?;
@@ -284,7 +285,7 @@ impl Project {
             }
             for c in &g.candidates {
                 c.artwork.validate()?;
-                check(c.sources.len() <= 100, "후보 출처가 너무 많아요.")?;
+                check(c.sources.len() <= 100, tr("후보 출처가 너무 많아요."))?;
                 for t in &c.sources {
                     t.validate()?;
                 }

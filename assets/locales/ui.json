@@ -1,0 +1,2254 @@
+{
+  "{0} 원본 자동 저장 파일은 보존됩니다. 프로젝트 열기로 백업을 복구해 주세요.": [
+    "{0} The original autosave is preserved. Open the backup as a project to recover it.",
+    "{0} 元の自動保存ファイルは保持されています。「開く」からバックアップを復元してください。"
+  ],
+  "A little doodle, a lot of you.\n나의 글씨로 쓰는 오늘 ❤️ 😊": [
+    "A little doodle, a lot of you.\nYour handwriting, your story ❤️ 😊",
+    "A little doodle, a lot of you.\n自分の文字でつづる今日 ❤️ 😊"
+  ],
+  "나의 부품": [
+    "My component",
+    "自分のパーツ"
+  ],
+  "사용자 가져오기": [
+    "User import",
+    "ユーザーによる読み込み"
+  ],
+  "자동 저장 실패: {0}": [
+    "Autosave failed: {0}",
+    "自動保存に失敗しました: {0}"
+  ],
+  "연결 테스트를 취소했어요.": [
+    "Connection test cancelled.",
+    "接続テストをキャンセルしました。"
+  ],
+  "설치를 취소했어요. 다시 설치하면 내려받던 파일을 이어받습니다.": [
+    "Installation cancelled. The download will resume next time.",
+    "インストールをキャンセルしました。次回はダウンロードを再開できます。"
+  ],
+  "AI 작업을 취소했어요. 편집을 계속할 수 있어요.": [
+    "AI task cancelled. You can continue editing.",
+    "AIの処理をキャンセルしました。編集を再開できます。"
+  ],
+  "AI 작업을 취소했어요. 새 후보는 저장하지 않았습니다.": [
+    "AI task cancelled. No new candidates were saved.",
+    "AIの処理をキャンセルしました。新しい候補は保存していません。"
+  ],
+  "연결 성공 · 모델이 텍스트 요청에 응답했어요.": [
+    "Connected · The model responded to the text request.",
+    "接続成功 · モデルがテキストのリクエストに応答しました。"
+  ],
+  "AI 작업을 완료하지 못했어요.\n{0}": [
+    "The AI task could not be completed.\n{0}",
+    "AIの処理を完了できませんでした。\n{0}"
+  ],
+  "판단 AI 설치를 마쳤어요. 모든 AI 연결의 입력 앞단에서 사용할 수 있어요.": [
+    "Decision AI installed. It can assist input for any AI connection.",
+    "判断AIをインストールしました。すべてのAI接続の入力補助に使えます。"
+  ],
+  "Gemma 4 설치를 마쳤어요. 하단 입력창에서 사용할 수 있어요.": [
+    "Gemma 4 installed. Use it from the prompt below.",
+    "Gemma 4をインストールしました。下部の入力欄から使えます。"
+  ],
+  "그림 후보를 만들었어요. 미리보기를 확인하고 채택해 주세요.": [
+    "Drawing candidates are ready. Preview and choose one to apply.",
+    "描画候補ができました。プレビューで比較して採用してください。"
+  ],
+  "그림 상담을 마쳤어요.": [
+    "Drawing consultation complete.",
+    "描画の相談が完了しました。"
+  ],
+  "후보를 만들지 못했어요.": [
+    "Could not create candidates.",
+    "候補を作成できませんでした。"
+  ],
+  "그림 상담을 완료하지 못했어요.": [
+    "Could not complete the drawing consultation.",
+    "描画の相談を完了できませんでした。"
+  ],
+  "{0} · {1} · {2}개 글리프 · {3}\n{4}\n{5}": [
+    "{0} · {1} · {2} glyphs · {3}\n{4}\n{5}",
+    "{0} · {1} · {2}グリフ · {3}\n{4}\n{5}"
+  ],
+  "폰트를 저장했어요: {0}": [
+    "Font saved: {0}",
+    "フォントを保存しました: {0}"
+  ],
+  "출력 폰트의 구조를 검증했어요.": [
+    "Exported font structure validated.",
+    "出力フォントの構造を検証しました。"
+  ],
+  "실제 출력 폰트를 생성하고 검사했어요.": [
+    "Font generated and checked.",
+    "フォントを生成して検査しました。"
+  ],
+  "프로젝트를 열었어요. 템플릿 원본과 후보도 복원했습니다.": [
+    "Project opened. Template originals and candidates restored.",
+    "プロジェクトを開きました。テンプレートの原本と候補も復元しました。"
+  ],
+  "AI 작업이 중단되었어요. 다시 요청해 주세요.": [
+    "AI task interrupted. Please try again.",
+    "AIの処理が中断されました。もう一度リクエストしてください。"
+  ],
+  "설치 작업이 중단되었어요. 다시 설치를 눌러 이어서 진행해 주세요.": [
+    "Installation interrupted. Retry to resume.",
+    "インストールが中断されました。再試行すると再開できます。"
+  ],
+  "작업 스레드가 종료되었어요. 프로젝트는 유지됩니다.": [
+    "The worker stopped. Your project is preserved.",
+    "処理スレッドが終了しました。プロジェクトは保持されています。"
+  ],
+  "현재 작업을 사본으로 보관했어요. 기존 자동 저장 파일의 오류를 먼저 해결해 주세요.": [
+    "Saved a copy of your work. Please resolve the existing autosave error first.",
+    "作業のコピーを保存しました。先に既存の自動保存エラーを解決してください。"
+  ],
+  "새 프로젝트를 만들었어요. 이전 작업: {0}": [
+    "New project created. Previous work: {0}",
+    "新しいプロジェクトを作成しました。前の作業: {0}"
+  ],
+  "원본·승인본·후보를 포함해 프로젝트를 저장했어요.": [
+    "Project saved with originals, approved versions and candidates.",
+    "原本・承認版・候補を含めてプロジェクトを保存しました。"
+  ],
+  "편집할 수 없는 글리프예요.": [
+    "This glyph cannot be edited.",
+    "このグリフは編集できません。"
+  ],
+  "이미지": [
+    "Image",
+    "画像"
+  ],
+  "8MB 이하 이미지를 사용해 주세요.": [
+    "Please use an image of 8 MB or less.",
+    "8 MB以下の画像を使ってください。"
+  ],
+  "표시 언어": [
+    "Display language",
+    "表示言語"
+  ],
+  "메뉴와 안내 문구에 바로 적용됩니다. 작성한 글자와 프로젝트 내용은 바뀌지 않아요.": [
+    "Menus and messages update immediately. Your glyphs and project content stay unchanged.",
+    "メニューと案内文にすぐ反映されます。作成した文字やプロジェクトの内容は変わりません。"
+  ],
+  "화면 테마": [
+    "Theme",
+    "テーマ"
+  ],
+  "컴패니언": [
+    "Companion",
+    "コンパニオン"
+  ],
+  "움직임 줄이기": [
+    "Reduce motion",
+    "動きを減らす"
+  ],
+  "컴패니언과 패널의 애니메이션을 줄입니다.": [
+    "Reduce companion and panel animations.",
+    "コンパニオンとパネルのアニメーションを減らします。"
+  ],
+  "컴패니언 표현": [
+    "Companion style",
+    "コンパニオンの表示"
+  ],
+  "나란히 비교": [
+    "Compare side by side",
+    "並べて比較"
+  ],
+  "기본 위치로 되돌리기": [
+    "Reset position",
+    "位置をリセット"
+  ],
+  "화면 설정을 저장하지 못했어요: {0}": [
+    "Could not save display settings: {0}",
+    "表示設定を保存できませんでした: {0}"
+  ],
+  "그리기": [
+    "Draw",
+    "描く"
+  ],
+  "문장 미리보기": [
+    "Text preview",
+    "文章プレビュー"
+  ],
+  "템플릿": [
+    "Templates",
+    "テンプレート"
+  ],
+  "설정": [
+    "Settings",
+    "設定"
+  ],
+  "폰트 내보내기 ↗": [
+    "Export font ↗",
+    "フォントを書き出す ↗"
+  ],
+  "프로젝트": [
+    "Project",
+    "プロジェクト"
+  ],
+  "프로젝트 사본 저장": [
+    "Save project copy",
+    "プロジェクトのコピーを保存"
+  ],
+  "열기…": [
+    "Open…",
+    "開く…"
+  ],
+  "새 프로젝트": [
+    "New project",
+    "新規プロジェクト"
+  ],
+  "화면": [
+    "View",
+    "表示"
+  ],
+  "저장 오류 · 프로젝트 저장으로 백업하세요": [
+    "Save error · Save a project backup",
+    "保存エラー · プロジェクトのバックアップを保存してください"
+  ],
+  "저장 중…": [
+    "Saving…",
+    "保存中…"
+  ],
+  "이 기기에 저장됨": [
+    "Saved on this device",
+    "このデバイスに保存済み"
+  ],
+  "{0}  /  {1}개 작업 글리프": [
+    "{0}  /  {1} working glyphs",
+    "{0}  /  {1}個の作業グリフ"
+  ],
+  "도움말  ?": [
+    "Help  ?",
+    "ヘルプ  ?"
+  ],
+  "두들 폰트 0.1.0": [
+    "Doodle Font 0.1.0",
+    "Doodle Font 0.1.0"
+  ],
+  "어시스트 열기 ↑": [
+    "Open assist ↑",
+    "アシストを開く ↑"
+  ],
+  "어시스트 접기 ↓": [
+    "Collapse assist ↓",
+    "アシストを閉じる ↓"
+  ],
+  "처리 중": [
+    "Processing",
+    "処理中"
+  ],
+  "{0}개 문자": [
+    "{0} characters",
+    "{0}文字"
+  ],
+  "+ 문자 추가": [
+    "+ Add characters",
+    "+ 文字を追加"
+  ],
+  "글자 또는 U+0041 검색": [
+    "Search character or U+0041",
+    "文字またはU+0041を検索"
+  ],
+  "작성한 글자만": [
+    "Drawn characters only",
+    "作成済みの文字のみ"
+  ],
+  "미작성": [
+    "Not drawn",
+    "未作成"
+  ],
+  "레이어·속성 접기": [
+    "Collapse layers and properties",
+    "レイヤー・属性を閉じる"
+  ],
+  "레이어·속성 펼치기": [
+    "Expand layers and properties",
+    "レイヤー・属性を開く"
+  ],
+  "레이어 · 속성": [
+    "Layers · Properties",
+    "レイヤー・属性"
+  ],
+  "레이어\n속성": [
+    "Layers\nProperties",
+    "レイヤー\n属性"
+  ],
+  "글리프 속성": [
+    "Glyph properties",
+    "グリフの属性"
+  ],
+  "한국어 자형": [
+    "Korean form",
+    "韓国語字形"
+  ],
+  "일본어 자형": [
+    "Japanese form",
+    "日本語字形"
+  ],
+  "공통 자형": [
+    "Shared form",
+    "共通字形"
+  ],
+  "제어 문자 · 확인 전용": [
+    "Control character · Read only",
+    "制御文字 · 確認のみ"
+  ],
+  "사용자 지정 문자열 매핑": [
+    "Custom string mapping",
+    "カスタム文字列マッピング"
+  ],
+  "유니코드 시퀀스 · 원문 보존": [
+    "Unicode sequence · Original preserved",
+    "Unicodeシーケンス · 原文保持"
+  ],
+  "사적 사용 영역 · 사용자 정의": [
+    "Private Use Area · Custom",
+    "私用領域 · カスタム"
+  ],
+  "단일 유니코드 문자": [
+    "Single Unicode character",
+    "単一のUnicode文字"
+  ],
+  "AI 후보 {0}개 보기 · 채택": [
+    "View · Apply {0} AI candidates",
+    "AI候補{0}件を表示・採用"
+  ],
+  "글리프 잠금": [
+    "Lock glyph",
+    "グリフをロック"
+  ],
+  "글자 폭": [
+    "Advance width",
+    "文字幅"
+  ],
+  "템플릿 편집 권한이 없어요.": [
+    "Template editing is not permitted.",
+    "このテンプレートは編集できません。"
+  ],
+  "레이어": [
+    "Layers",
+    "レイヤー"
+  ],
+  "{0}개": [
+    "{0} items",
+    "{0}個"
+  ],
+  "잠김": [
+    "Locked",
+    "ロック中"
+  ],
+  "잠금": [
+    "Lock",
+    "ロック"
+  ],
+  "채우기": [
+    "Fill",
+    "塗りつぶし"
+  ],
+  "불투명도": [
+    "Opacity",
+    "不透明度"
+  ],
+  "획 굵기": [
+    "Stroke width",
+    "線の太さ"
+  ],
+  "복제": [
+    "Duplicate",
+    "複製"
+  ],
+  "위로": [
+    "Up",
+    "上へ"
+  ],
+  "아래로": [
+    "Down",
+    "下へ"
+  ],
+  "삭제": [
+    "Delete",
+    "削除"
+  ],
+  "선 부드럽게 보정": [
+    "Smooth strokes",
+    "線を滑らかにする"
+  ],
+  "이미지 → 단색 벡터 변환": [
+    "Image → Monochrome vector",
+    "画像 → 単色ベクター"
+  ],
+  "원본 이미지 · 숨김 보관": [
+    "Original image · Hidden archive",
+    "元の画像 · 非表示で保管"
+  ],
+  "원본과 기준 디자인": [
+    "Originals and reference design",
+    "原本と基準デザイン"
+  ],
+  "템플릿 연결 없음": [
+    "No template linked",
+    "テンプレート未接続"
+  ],
+  "템플릿 원본으로 복원": [
+    "Restore template original",
+    "テンプレートの原本に戻す"
+  ],
+  "기준 저장": [
+    "Save reference",
+    "基準を保存"
+  ],
+  "기준 복원": [
+    "Restore reference",
+    "基準に戻す"
+  ],
+  "사용자 정의 해제 · 시스템 표시": [
+    "Clear custom art · Use system",
+    "カスタム表示を解除・システム表示"
+  ],
+  "선택한 변형에 그림 복사…": [
+    "Copy art to selected variants…",
+    "選択したバリエーションに絵をコピー…"
+  ],
+  "부품 보관함": [
+    "Components",
+    "パーツ保管庫"
+  ],
+  "현재 그림을 부품으로 저장": [
+    "Save current art as a component",
+    "現在の絵をパーツとして保存"
+  ],
+  "글리프가 보호되어 있어요.": [
+    "This glyph is protected.",
+    "このグリフは保護されています。"
+  ],
+  "부품의 템플릿에 편집 권한이 없어요.": [
+    "Editing this component's template is not permitted.",
+    "このパーツのテンプレートは編集できません。"
+  ],
+  "AI 후보": [
+    "AI candidates",
+    "AI候補"
+  ],
+  "현재 글리프 후보 생성": [
+    "Generate candidates for this glyph",
+    "このグリフの候補を生成"
+  ],
+  "후보 비교 화면 열기": [
+    "Compare candidates",
+    "候補を比較"
+  ],
+  "채택": [
+    "Apply",
+    "採用"
+  ],
+  "문자를 추가해 작업을 시작하세요.": [
+    "Add characters to start working.",
+    "文字を追加して始めましょう。"
+  ],
+  "{0}  ·  나의 글자": [
+    "{0}  ·  My glyph",
+    "{0}  ·  自分の文字"
+  ],
+  "다시 실행 Ctrl+Y": [
+    "Redo Ctrl+Y",
+    "やり直す Ctrl+Y"
+  ],
+  "실행 취소 Ctrl+Z": [
+    "Undo Ctrl+Z",
+    "元に戻す Ctrl+Z"
+  ],
+  "펜": [
+    "Pen",
+    "ペン"
+  ],
+  "직선": [
+    "Line",
+    "直線"
+  ],
+  "네모": [
+    "Rectangle",
+    "四角"
+  ],
+  "동그라미": [
+    "Ellipse",
+    "丸"
+  ],
+  "이동": [
+    "Move",
+    "移動"
+  ],
+  "이미지 +": [
+    "Image +",
+    "画像 +"
+  ],
+  "가이드": [
+    "Guides",
+    "ガイド"
+  ],
+  "밑글자": [
+    "Trace",
+    "下書き"
+  ],
+  "현재 색을 팔레트에 저장": [
+    "Save current color to palette",
+    "現在の色をパレットに保存"
+  ],
+  "확대": [
+    "Zoom",
+    "拡大"
+  ],
+  "드래그해서 그려 보세요.  Ctrl+Z 실행 취소": [
+    "Drag to draw.  Ctrl+Z to undo",
+    "ドラッグして描きましょう。Ctrl+Zで元に戻す"
+  ],
+  "현재 글리프는 읽기 전용이에요.": [
+    "This glyph is read only.",
+    "このグリフは読み取り専用です。"
+  ],
+  "자모로 조합": [
+    "Compose from Jamo",
+    "字母から合成"
+  ],
+  "글자가 모이면, 나의 이야기가 돼요.": [
+    "Your letters come together to tell your story.",
+    "文字が集まると、自分の物語になります。"
+  ],
+  "작성한 그림과 시스템 대체 표시를 나란히 확인하세요.": [
+    "Compare your drawings with system fallback glyphs.",
+    "作成した絵とシステムの代替表示を並べて確認できます。"
+  ],
+  "크기": [
+    "Size",
+    "サイズ"
+  ],
+  "비출력 문자 표시": [
+    "Show nonprinting characters",
+    "非表示文字を表示"
+  ],
+  "미리 볼 문장을 입력하세요": [
+    "Enter text to preview",
+    "プレビューする文章を入力"
+  ],
+  "● 프로젝트 그림": [
+    "● Project art",
+    "● プロジェクトの絵"
+  ],
+  "○ 시스템 대체": [
+    "○ System fallback",
+    "○ システムの代替表示"
+  ],
+  "프로젝트 글리프 · {0}": [
+    "Project glyph · {0}",
+    "プロジェクトのグリフ · {0}"
+  ],
+  "시스템 폰트 대체 · {0}": [
+    "System font fallback · {0}",
+    "システムフォントの代替表示 · {0}"
+  ],
+  "실제 출력 폰트 확인": [
+    "Check the exported font",
+    "出力フォントを確認"
+  ],
+  "TTF 생성 · 검사": [
+    "Generate · Check TTF",
+    "TTFを生成・検査"
+  ],
+  "{0}개 글리프 · {1}\n{2}": [
+    "{0} glyphs · {1}\n{2}",
+    "{0}グリフ · {1}\n{2}"
+  ],
+  "실제 생성한 TTF를 다시 읽고 Rustybuzz로 문자 치환을 시험합니다. 외부 앱의 컬러·시퀀스 지원은 다를 수 있어요.": [
+    "The generated TTF is read back and shaped with Rustybuzz. Color and sequence support may vary between external apps.",
+    "生成したTTFを読み直し、Rustybuzzで文字の置換を検査します。外部アプリのカラー・シーケンス対応は異なる場合があります。"
+  ],
+  "이 아래는 실제 TTF만 사용합니다. 폰트에 없는 글자는 빈칸으로 표시됩니다.": [
+    "Only the generated TTF is used below. Missing characters appear blank.",
+    "ここから下は生成したTTFのみを使います。フォントにない文字は空白で表示されます。"
+  ],
+  "폰트 구조 검사 결과": [
+    "Font structure results",
+    "フォント構造の検査結果"
+  ],
+  "좋은 시작을 모아 두는 곳": [
+    "A collection of good beginnings",
+    "素敵な始まりを集める場所"
+  ],
+  "원본과 이용 조건을 함께 보관해요. 적용해도 문자 매핑은 그대로 유지됩니다.": [
+    "Originals and usage terms are kept together. Applying a template preserves character mappings.",
+    "原本と利用条件を一緒に保管します。適用しても文字のマッピングは変わりません。"
+  ],
+  "원본 참조 없음": [
+    "No original reference",
+    "原本の参照なし"
+  ],
+  "가능": [
+    "Allowed",
+    "可"
+  ],
+  "제한": [
+    "Restricted",
+    "制限あり"
+  ],
+  "편집 {0} / 폰트 포함 {1} / AI {2}": [
+    "Edit {0} / Embed in font {1} / AI {2}",
+    "編集 {0} / フォントへの収録 {1} / AI {2}"
+  ],
+  "선택한 글리프에 적용": [
+    "Apply to selected glyph",
+    "選択したグリフに適用"
+  ],
+  "내 템플릿 연결": [
+    "Link my template",
+    "自分のテンプレートを接続"
+  ],
+  "Apple·Samsung 등 제공자별 자산은 권한을 확인한 원본만 직접 연결하세요. 앱에는 해당 업체 그림이 포함되어 있지 않습니다.": [
+    "Only link assets from Apple, Samsung or other providers if you have the required rights. Their artwork is not included in this app.",
+    "Apple・Samsungなどの素材は、権利を確認した原本のみ接続してください。このアプリに各社の絵は含まれていません。"
+  ],
+  "템플릿 JSON 가져오기": [
+    "Import template JSON",
+    "テンプレートJSONを読み込む"
+  ],
+  "템플릿은 16MB 이하여야 해요.": [
+    "Templates must be 16 MB or less.",
+    "テンプレートは16 MB以下にしてください。"
+  ],
+  "같은 ID의 템플릿이 이미 있어요. 새 버전은 별도 ID로 가져오세요.": [
+    "A template with this ID already exists. Import a new version with a different ID.",
+    "同じIDのテンプレートが存在します。新しいバージョンは別のIDで読み込んでください。"
+  ],
+  "시스템 기본으로 표시": [
+    "Use system display",
+    "システム表示を使う"
+  ],
+  "제공자": [
+    "Provider",
+    "提供者"
+  ],
+  "버전": [
+    "Version",
+    "バージョン"
+  ],
+  "출처 / 원본 위치": [
+    "Source / Original location",
+    "出典 / 原本の場所"
+  ],
+  "라이선스 / 이용 조건": [
+    "License / Usage terms",
+    "ライセンス / 利用条件"
+  ],
+  "출처 표시 문구": [
+    "Attribution text",
+    "クレジット表記"
+  ],
+  "표시 허용": [
+    "Allow display",
+    "表示を許可"
+  ],
+  "편집 허용": [
+    "Allow editing",
+    "編集を許可"
+  ],
+  "폰트 포함 허용": [
+    "Allow font embedding",
+    "フォントへの収録を許可"
+  ],
+  "원본 재배포 허용": [
+    "Allow original redistribution",
+    "原本の再配布を許可"
+  ],
+  "AI 전송 허용": [
+    "Allow sending to AI",
+    "AIへの送信を許可"
+  ],
+  "현재 그림을 새 템플릿으로 보관": [
+    "Save current art as a new template",
+    "現在の絵を新しいテンプレートとして保存"
+  ],
+  "출처와 이용 조건을 기록해 주세요.": [
+    "Please record the source and usage terms.",
+    "出典と利用条件を記録してください。"
+  ],
+  "기존 템플릿은 원본 재배포 권한이 없어요.": [
+    "Redistribution of the existing template original is not permitted.",
+    "既存テンプレートの原本は再配布できません。"
+  ],
+  "현재 원본을 버전과 함께 보관했어요.": [
+    "Original saved with its version.",
+    "現在の原本をバージョンとともに保存しました。"
+  ],
+  "AI가 그림 후보를 반환하지 않았어요. 설명만 있는 응답은 채택할 수 없습니다.": [
+    "AI returned no drawing candidates. A text-only explanation cannot be applied.",
+    "AIが描画候補を返しませんでした。説明だけの応答は採用できません。"
+  ],
+  "후보의 출처 정보를 읽지 못했어요.": [
+    "Could not read candidate source information.",
+    "候補の出典情報を読み取れませんでした。"
+  ],
+  "후보 출처가 너무 많아요.": [
+    "Too many candidate sources.",
+    "候補の出典が多すぎます。"
+  ],
+  "후보를 저장할 글리프를 찾을 수 없어요.": [
+    "Could not find the glyph to save candidates to.",
+    "候補を保存するグリフが見つかりません。"
+  ],
+  "잠금·빈칸·미지원 항목에는 후보를 저장할 수 없어요.": [
+    "Candidates cannot be saved to locked, blank or unsupported items.",
+    "ロック・空白・未対応の項目には候補を保存できません。"
+  ],
+  "이 글리프의 AI 후보가 50개여서 새 후보를 저장할 수 없어요.": [
+    "This glyph already has 50 AI candidates. No more can be saved.",
+    "このグリフにはAI候補が50件あるため、これ以上保存できません。"
+  ],
+  "AI 후보 {0}": [
+    "AI candidate {0}",
+    "AI候補 {0}"
+  ],
+  "‘{0}’의 그림 후보를 만들었어요. 후보 보기에서 비교하고 채택해 주세요.": [
+    "Drawing candidates for ‘{0}’ are ready. Compare them and choose one to apply.",
+    "「{0}」の描画候補ができました。比較して採用してください。"
+  ],
+  "AI 상담 응답이 비어 있어요.": [
+    "The AI consultation response is empty.",
+    "AIの相談への応答が空です。"
+  ],
+  "아직 저장된 후보가 없어요. 후보 만들기로 그림을 생성해 주세요.": [
+    "No saved candidates yet. Generate candidates to create some.",
+    "保存済みの候補はありません。「候補を作る」から生成してください。"
+  ],
+  "‘{0}’ AI 후보": [
+    "‘{0}’ AI candidates",
+    "「{0}」のAI候補"
+  ],
+  "닫기": [
+    "Close",
+    "閉じる"
+  ],
+  "그림을 비교하고 채택해 주세요. 채택 전에는 현재 그림이 바뀌지 않습니다.": [
+    "Compare drawings and choose one. Your current art stays unchanged until you apply a candidate.",
+    "絵を比較して採用してください。採用するまでは現在の絵は変わりません。"
+  ],
+  "화면 동작 검증용 모의 후보 · 실제 AI 생성 결과가 아닙니다.": [
+    "UI test fixture · Not generated by AI.",
+    "画面動作検証用の模擬候補 · AIの生成結果ではありません。"
+  ],
+  "실제 내장 AI 생성 결과 · 글자 정확도는 별도로 확인합니다.": [
+    "Generated by the built-in AI · Check character accuracy separately.",
+    "内蔵AIの生成結果 · 文字の正確さは別途確認してください。"
+  ],
+  "실제 Needle 3 판단 경로 · 모의 응답을 사용하지 않습니다.": [
+    "Live Needle 3 decision path · No simulated responses.",
+    "実際のNeedle 3判断経路 · 模擬応答は使っていません。"
+  ],
+  "공개 글꼴 자형을 활용했어요. 출력 폰트에 출처와 OFL 이용 조건이 포함됩니다.": [
+    "Uses open font outlines. Attribution and OFL terms are included in the exported font.",
+    "公開フォントの字形を使用しています。出力フォントに出典とOFLの利用条件が含まれます。"
+  ],
+  "현재 그림": [
+    "Current art",
+    "現在の絵"
+  ],
+  "선택한 AI 후보": [
+    "Selected AI candidate",
+    "選択したAI候補"
+  ],
+  "이 후보 채택": [
+    "Apply this candidate",
+    "この候補を採用"
+  ],
+  "잠금·빈칸·미지원 상태를 해제한 뒤 채택할 수 있어요.": [
+    "Unlock the glyph and clear blank or unsupported status before applying.",
+    "ロック・空白・未対応の状態を解除してから採用してください。"
+  ],
+  "선택한 후보가 없어요. 위에서 다른 후보를 골라 주세요.": [
+    "No candidate selected. Choose another above.",
+    "候補が選択されていません。上から別の候補を選んでください。"
+  ],
+  "AI 후보를 적용했어요. 실행 취소로 이전 그림으로 돌아갈 수 있어요.": [
+    "AI candidate applied. Undo to restore the previous drawing.",
+    "AI候補を適用しました。「元に戻す」で前の絵に戻せます。"
+  ],
+  "판단 AI 설치 준비 중": [
+    "Preparing decision AI installation",
+    "判断AIのインストールを準備中"
+  ],
+  "Gemma 4 설치 준비 중": [
+    "Preparing Gemma 4 installation",
+    "Gemma 4のインストールを準備中"
+  ],
+  "AI 연결 화면에서 로컬 모델 또는 API를 먼저 준비해 주세요.": [
+    "Set up local AI or an API in settings first.",
+    "先に設定でローカルAIまたはAPIを準備してください。"
+  ],
+  "먼저 작업할 글리프를 선택해 주세요.": [
+    "Select a glyph to work on first.",
+    "先に作業するグリフを選んでください。"
+  ],
+  "이 글리프의 AI 후보가 50개여서 새 후보를 만들 수 없어요.": [
+    "This glyph already has 50 AI candidates. No more can be created.",
+    "このグリフにはAI候補が50件あるため、これ以上生成できません。"
+  ],
+  "AI 작업 준비 중": [
+    "Preparing AI task",
+    "AIの処理を準備中"
+  ],
+  "{0}초": [
+    "{0}s",
+    "{0}秒"
+  ],
+  "작업 취소": [
+    "Cancel task",
+    "処理をキャンセル"
+  ],
+  "작업을 취소하고 편집을 다시 여는 중": [
+    "Cancelling task and restoring editing",
+    "処理をキャンセルして編集を再開中"
+  ],
+  "최초 설치에는 인터넷이 필요합니다. 취소해도 다음에 이어받을 수 있어요.": [
+    "Internet is required for the first installation. Cancelled downloads can be resumed.",
+    "初回インストールにはインターネットが必要です。キャンセルしても次回再開できます。"
+  ],
+  "작업 중에는 화면 입력과 편집이 잠깁니다.": [
+    "Input and editing are locked while the task is running.",
+    "処理中は画面の入力と編集がロックされます。"
+  ],
+  "두들 어시스트": [
+    "Doodle Assist",
+    "Doodle Assist"
+  ],
+  "로컬 AI": [
+    "Local AI",
+    "ローカルAI"
+  ],
+  "API · 그림 포함": [
+    "API · With image",
+    "API · 画像あり"
+  ],
+  "API · 텍스트만": [
+    "API · Text only",
+    "API · テキストのみ"
+  ],
+  "그림 상담": [
+    "Ask about drawing",
+    "絵の相談"
+  ],
+  "후보 만들기": [
+    "Create candidates",
+    "候補を作る"
+  ],
+  "접기": [
+    "Collapse",
+    "折りたたむ"
+  ],
+  "한 글자부터 가볍게 그려보세요. AI를 연결하면 두들이 도와드려요.": [
+    "Start with a single letter. Connect AI for a helping hand from Doodle.",
+    "まずは一文字から。AIを接続するとDoodleがお手伝いします。"
+  ],
+  "AI 연결하기": [
+    "Connect AI",
+    "AIを接続"
+  ],
+  "획 다듬기": [
+    "Refine strokes",
+    "線を整える"
+  ],
+  "현재 그림의 형태와 위치는 유지하고 획 굵기를 48로 통일해줘.": [
+    "Keep the current shape and position, and make all strokes 48 units wide.",
+    "現在の形と位置を維持し、線の太さを48に統一して。"
+  ],
+  "둥근 손글씨": [
+    "Rounded handwriting",
+    "丸い手書き文字"
+  ],
+  "선택한 글자를 동글동글한 손글씨로 만들어줘.": [
+    "Make the selected character look like rounded handwriting.",
+    "選択した文字を丸みのある手書き文字にして。"
+  ],
+  "균형 봐주기": [
+    "Check balance",
+    "バランスを確認"
+  ],
+  "현재 글자의 기준선, 획의 균형과 간격을 살펴보고 개선할 점을 알려줘.": [
+    "Review the baseline, stroke balance and spacing of this glyph and suggest improvements.",
+    "この文字のベースライン、線のバランス、間隔を確認して、改善点を教えて。"
+  ],
+  "저장된 후보 {0}개 보기 · 채택": [
+    "View · Apply {0} saved candidates",
+    "保存済み候補{0}件を表示・採用"
+  ],
+  "이 글자를 굵고 둥근 손글씨로 그려줘.": [
+    "Draw this character as bold, rounded handwriting.",
+    "この文字を太く丸い手書き文字で描いて。"
+  ],
+  "이 글자의 균형을 봐줘. 획을 더 부드럽게 만들려면?": [
+    "Check this character's balance. How can I make the strokes smoother?",
+    "この文字のバランスを見て。線をもっと滑らかにするには？"
+  ],
+  "그림 생성": [
+    "Generate art",
+    "絵を生成"
+  ],
+  "상담하기": [
+    "Ask AI",
+    "相談する"
+  ],
+  "드래그하여 이동 · 마우스 오른쪽 버튼으로 설정": [
+    "Drag to move · Right-click for settings",
+    "ドラッグで移動 · 右クリックで設定"
+  ],
+  "내장 판단 AI 사용": [
+    "Use built-in decision AI",
+    "内蔵の判断AIを使う"
+  ],
+  "처음 켜면 판단 모델 약 37 MB를 자동으로 설치해요.": [
+    "Enabling this for the first time installs a decision model of about 37 MB.",
+    "初めて有効にすると、約37 MBの判断モデルを自動でインストールします。"
+  ],
+  "준비됨": [
+    "Ready",
+    "準備完了"
+  ],
+  "설치 필요 · 37 MB": [
+    "Installation needed · 37 MB",
+    "インストールが必要 · 37 MB"
+  ],
+  "설치 다시 시도": [
+    "Retry installation",
+    "インストールを再試行"
+  ],
+  "입력 보조 · 선택 사항": [
+    "Input assistance · Optional",
+    "入力補助 · 任意"
+  ],
+  "간단한 편집을 먼저 판단해요. 한국어 정확도는 아직 제한적이에요.": [
+    "Checks simple edits first. Korean accuracy is still limited.",
+    "簡単な編集を先に判断します。韓国語の精度はまだ限定的です。"
+  ],
+  "판단 AI 자세히": [
+    "About decision AI",
+    "判断AIの詳細"
+  ],
+  "Needle 3 · 시험 기능": [
+    "Needle 3 · Experimental",
+    "Needle 3 · 試験機能"
+  ],
+  "그림을 만드는 AI와 별개로, 내장 AI와 API 모두에 적용돼요. PC에서 입력한 텍스트만 확인합니다.": [
+    "Separate from the drawing AI, this works with local AI and APIs. It only checks your typed text on this PC.",
+    "描画AIとは別に、ローカルAIとAPIの両方で動作します。このPCで入力したテキストだけを確認します。"
+  ],
+  "설치되지 않았거나 판단이 불확실하면 선택한 AI가 그대로 처리해요. 판단 결과는 두들의 동작 선택에도 쓰입니다.": [
+    "If unavailable or uncertain, your selected AI handles the request. Decisions also help choose Doodle's animations.",
+    "未インストールや判断が不確かな場合は、選択したAIが処理します。判断結果はDoodleの動作選択にも使われます。"
+  ],
+  "판단 모델 검증 · 복구": [
+    "Verify · Repair decision model",
+    "判断モデルを検証・修復"
+  ],
+  "판단 AI 설정을 저장하지 못했어요: {0}": [
+    "Could not save decision AI settings: {0}",
+    "判断AIの設定を保存できませんでした: {0}"
+  ],
+  "연결 설정을 저장하는 중이에요…": [
+    "Saving connection settings…",
+    "接続設定を保存中…"
+  ],
+  "연결 설정 저장 완료 · 다음 실행에도 유지돼요": [
+    "Connection settings saved · Kept for next launch",
+    "接続設定を保存しました · 次回の起動でも保持されます"
+  ],
+  "연결 테스트 중…": [
+    "Testing connection…",
+    "接続テスト中…"
+  ],
+  "API 연결을 확인하는 중": [
+    "Checking API connection",
+    "API接続を確認中"
+  ],
+  "연결 테스트를 시작하지 못했어요.": [
+    "Could not start the connection test.",
+    "接続テストを開始できませんでした。"
+  ],
+  "내 작업실 설정": [
+    "Studio settings",
+    "作業室の設定"
+  ],
+  "AI 어시스트": [
+    "AI assist",
+    "AIアシスト"
+  ],
+  "그림 상담과 후보를 만들어 줄 AI": [
+    "AI for drawing advice and candidates",
+    "描画の相談と候補を作るAI"
+  ],
+  "사용 안 함": [
+    "Off",
+    "使わない"
+  ],
+  "OpenAI 호환": [
+    "OpenAI compatible",
+    "OpenAI互換"
+  ],
+  "Anthropic 호환": [
+    "Anthropic compatible",
+    "Anthropic互換"
+  ],
+  "처음 선택하면 로컬 AI 약 3.4 GB를 자동으로 설치해요.": [
+    "Selecting this for the first time installs local AI of about 3.4 GB.",
+    "初めて選択すると、約3.4 GBのローカルAIを自動でインストールします。"
+  ],
+  "AI 없이 직접 그리기와 폰트 내보내기를 사용할 수 있어요.": [
+    "You can draw and export fonts without AI.",
+    "AIを使わずに描画とフォントの書き出しができます。"
+  ],
+  "사용 준비 완료 · 인터넷 없이 사용해요": [
+    "Ready · Works offline",
+    "準備完了 · オフラインで使えます"
+  ],
+  "설치 필요 · 약 3.4 GB": [
+    "Installation needed · About 3.4 GB",
+    "インストールが必要 · 約3.4 GB"
+  ],
+  "모델 정보 · 설치 관리": [
+    "Model information · Installation",
+    "モデル情報・インストール管理"
+  ],
+  "Gemma 4 E2B · 작업할 때만 읽고 끝나면 메모리를 반환해요.": [
+    "Gemma 4 E2B · Loaded only while working; memory is released afterwards.",
+    "Gemma 4 E2B · 処理中のみ読み込み、終了後にメモリを解放します。"
+  ],
+  "설치 위치: {0}": [
+    "Install location: {0}",
+    "インストール先: {0}"
+  ],
+  "확인이 필요한 파일: {0}": [
+    "Files to check: {0}",
+    "確認が必要なファイル: {0}"
+  ],
+  "설치 파일 검증 · 복구": [
+    "Verify · Repair installation",
+    "インストールファイルを検証・修復"
+  ],
+  "설치 상태 다시 확인": [
+    "Refresh installation status",
+    "インストール状態を再確認"
+  ],
+  "연결 정보 입력됨": [
+    "Connection details entered",
+    "接続情報を入力済み"
+  ],
+  "연결 설정 필요": [
+    "Connection setup needed",
+    "接続設定が必要"
+  ],
+  "연결 설정": [
+    "Connection settings",
+    "接続設定"
+  ],
+  "API 기본 주소": [
+    "API base URL",
+    "APIのベースURL"
+  ],
+  "모델 이름": [
+    "Model name",
+    "モデル名"
+  ],
+  "연결할 제공자의 정확한 모델 ID": [
+    "Exact model ID from your provider",
+    "接続先の正確なモデルID"
+  ],
+  "API 키": [
+    "API key",
+    "APIキー"
+  ],
+  "다음 실행에도 유지할 API 키": [
+    "API key to keep for next launch",
+    "次回も使うAPIキー"
+  ],
+  "연결 설정 저장": [
+    "Save connection",
+    "接続設定を保存"
+  ],
+  "저장된 키 삭제": [
+    "Delete saved key",
+    "保存済みキーを削除"
+  ],
+  "연결 테스트": [
+    "Test connection",
+    "接続テスト"
+  ],
+  "그림 없이 짧은 텍스트 요청을 보내요. 제공자의 API 사용량이 발생할 수 있어요.": [
+    "Sends a short text request without an image. Your provider may charge for API usage.",
+    "画像なしの短いテキストを送信します。提供元のAPI利用料が発生する場合があります。"
+  ],
+  "연결 정보는 이 PC에 암호화해 자동 저장해요.": [
+    "Connection details are encrypted and saved automatically on this PC.",
+    "接続情報はこのPCに暗号化して自動保存されます。"
+  ],
+  "컬러 그림 제안": [
+    "Suggest color artwork",
+    "カラーの絵を提案"
+  ],
+  "현재 그림을 API에 함께 전송": [
+    "Send current drawing to API",
+    "現在の絵をAPIに送信"
+  ],
+  "선택한 글리프의 드로잉 영역 이미지와 벡터를 전송해요.": [
+    "Sends the selected glyph's canvas image and vectors.",
+    "選択したグリフの描画領域の画像とベクターを送信します。"
+  ],
+  "생성 테스트…": [
+    "Generation test…",
+    "生成テスト…"
+  ],
+  "프로젝트 정보": [
+    "Project information",
+    "プロジェクト情報"
+  ],
+  "프로젝트 이름": [
+    "Project name",
+    "プロジェクト名"
+  ],
+  "폰트 패밀리": [
+    "Font family",
+    "フォントファミリー"
+  ],
+  "자동 저장 위치": [
+    "Autosave location",
+    "自動保存先"
+  ],
+  "자동 저장 다시 시도": [
+    "Retry autosave",
+    "自動保存を再試行"
+  ],
+  "생성 테스트": [
+    "Generation test",
+    "生成テスト"
+  ],
+  "선택한 글자: {0} · {1}": [
+    "Selected character: {0} · {1}",
+    "選択した文字: {0} · {1}"
+  ],
+  "원하는 그림 스타일을 입력해 주세요.": [
+    "Describe the drawing style you want.",
+    "希望する絵のスタイルを入力してください。"
+  ],
+  "후보 생성": [
+    "Generate candidates",
+    "候補を生成"
+  ],
+  "현재 글자에 바로 적용하지 않고, 후보를 만든 뒤 비교해요.": [
+    "Creates candidates to compare before applying them to the current glyph.",
+    "現在の文字にすぐ適用せず、候補を作成して比較します。"
+  ],
+  "선택한 변형에 그림 복사": [
+    "Copy art to selected variants",
+    "選択したバリエーションに絵をコピー"
+  ],
+  "선택한 대상에만 그림을 복사합니다. 원문·지역·원본 템플릿은 유지됩니다.": [
+    "Copies art only to selected targets. Text, locale and original templates are preserved.",
+    "選択した対象にだけ絵をコピーします。原文・地域・元のテンプレートは保持されます。"
+  ],
+  "선택한 {0}개에 적용": [
+    "Apply to {0} selected items",
+    "選択した{0}件に適用"
+  ],
+  "대상 글리프가 보호되어 있어요.": [
+    "The target glyph is protected.",
+    "対象のグリフは保護されています。"
+  ],
+  "문자와 문자열 추가": [
+    "Add characters and strings",
+    "文字と文字列を追加"
+  ],
+  "문장을 붙여 넣으면 사람이 한 글자로 읽는 묶음으로 추출해요.": [
+    "Paste text to extract the clusters people read as single characters.",
+    "文章を貼り付けると、一文字として読まれるまとまりを抽出します。"
+  ],
+  "ZWJ·표시 선택자·분해된 악센트는 원문 그대로 보존합니다.": [
+    "ZWJ, variation selectors and decomposed accents are preserved exactly.",
+    "ZWJ・異体字セレクター・分解されたアクセントは原文のまま保持します。"
+  ],
+  "공통": [
+    "Shared",
+    "共通"
+  ],
+  "전체 문자열 → 하나의 글리프": [
+    "Entire string → One glyph",
+    "文字列全体 → 一つのグリフ"
+  ],
+  "추출해서 추가": [
+    "Extract and add",
+    "抽出して追加"
+  ],
+  "100만 바이트 이하 문장을 사용해 주세요.": [
+    "Please use text of 1 million bytes or less.",
+    "100万バイト以下の文章を使ってください。"
+  ],
+  "{0}개 항목을 추가했어요. 이미 있는 매핑은 유지됩니다.": [
+    "Added {0} items. Existing mappings are preserved.",
+    "{0}件追加しました。既存のマッピングは保持されます。"
+  ],
+  "나만의 아이콘 · 사적 사용 영역 (PUA)": [
+    "My icons · Private Use Area (PUA)",
+    "自分のアイコン · 私用領域（PUA）"
+  ],
+  "추가": [
+    "Add",
+    "追加"
+  ],
+  "PUA는 E000–F8FF 범위로 입력해 주세요.": [
+    "Enter a PUA codepoint in the E000–F8FF range.",
+    "PUAはE000–F8FFの範囲で入力してください。"
+  ],
+  "나의 폰트 내보내기": [
+    "Export my font",
+    "自分のフォントを書き出す"
+  ],
+  "그린 글자를, 진짜 폰트로.": [
+    "Turn your drawings into a real font.",
+    "描いた文字を、本物のフォントに。"
+  ],
+  "폰트 패밀리 이름": [
+    "Font family name",
+    "フォントファミリー名"
+  ],
+  "파일 포맷": [
+    "File format",
+    "ファイル形式"
+  ],
+  "컴퓨터에 설치 · 디자인 작업용 OpenType 폰트": [
+    "Install on your computer · OpenType font for design work",
+    "PCにインストール · デザイン用OpenTypeフォント"
+  ],
+  "웹사이트용 · 압축된 웹폰트": [
+    "For websites · Compressed web font",
+    "ウェブサイト用 · 圧縮ウェブフォント"
+  ],
+  "웹사이트용 · WOFF 지원 환경에 제공하는 웹폰트": [
+    "For websites · Web font for WOFF-compatible environments",
+    "ウェブサイト用 · WOFF対応環境向けのフォント"
+  ],
+  "컴퓨터에 설치 · 일반 문서와 편집 작업용 TrueType 폰트": [
+    "Install on your computer · TrueType font for documents and editing",
+    "PCにインストール · 文書・編集用TrueTypeフォント"
+  ],
+  "글자 표현 방식": [
+    "Glyph rendering",
+    "文字の表現"
+  ],
+  "단색 · 이미지 실루엣 변환": [
+    "Monochrome · Image silhouettes",
+    "単色 · 画像をシルエットに変換"
+  ],
+  "비트맵 · 그림 그대로": [
+    "Bitmap · Original artwork",
+    "ビットマップ · 絵をそのまま"
+  ],
+  "컬러 · 벡터 레이어": [
+    "Color · Vector layers",
+    "カラー · ベクターレイヤー"
+  ],
+  "출력 범위": [
+    "Export scope",
+    "出力範囲"
+  ],
+  "한국어용": [
+    "Korean",
+    "韓国語用"
+  ],
+  "일본어용": [
+    "Japanese",
+    "日本語用"
+  ],
+  "공통 자형만": [
+    "Shared forms only",
+    "共通字形のみ"
+  ],
+  "통합 · 지역별 자형": [
+    "Combined · Regional forms",
+    "統合 · 地域別字形"
+  ],
+  "이 문장에 필요한 글리프만 출력": [
+    "Export only glyphs used in this text",
+    "この文章に必要なグリフのみ出力"
+  ],
+  "현재 문자 모음만 출력": [
+    "Export only the current character set",
+    "現在の文字セットのみ出力"
+  ],
+  "문자 모음별 분할 · ZIP": [
+    "Split by character set · ZIP",
+    "文字セットごとに分割 · ZIP"
+  ],
+  "프로젝트 작성 항목 {0}개 · 레이어·시퀀스 부품을 포함해 출력 개수를 검증합니다.": [
+    "{0} project items drawn · Export counts include layers and sequence components.",
+    "作成済みの項目{0}件 · レイヤーとシーケンスのパーツを含めて出力数を検証します。"
+  ],
+  "시스템 대체 그림은 포함되지 않습니다. 미작성·미지원·시스템 표시 항목은 제외해요.": [
+    "System fallback artwork is not included. Undrawn, unsupported and system-display items are excluded.",
+    "システムの代替画像は含まれません。未作成・未対応・システム表示の項目は除外されます。"
+  ],
+  "컬러 모드에 이미지가 있으면 비트맵으로 출력합니다. 단색 모드는 이미지를 실루엣으로 변환해요.": [
+    "Images in color mode are exported as bitmaps. Monochrome mode converts images to silhouettes.",
+    "カラーモードの画像はビットマップで出力します。単色モードでは画像をシルエットに変換します。"
+  ],
+  "컬러·비트맵 표시 여부는 사용하는 앱이나 브라우저에 따라 달라집니다.": [
+    "Color and bitmap display depends on the app or browser you use.",
+    "カラー・ビットマップの表示は、使うアプリやブラウザーによって異なります。"
+  ],
+  "출력 전 검사": [
+    "Check before export",
+    "出力前に検査"
+  ],
+  "파일로 저장": [
+    "Save to file",
+    "ファイルに保存"
+  ],
+  "선택한 포맷에 맞게 파일 이름을 .{0}로 끝내 주세요.": [
+    "End the filename with .{0} to match the selected format.",
+    "選択した形式に合わせてファイル名の末尾を.{0}にしてください。"
+  ],
+  "두들 폰트 사용하기": [
+    "Using Doodle Font",
+    "Doodle Fontの使い方"
+  ],
+  "한 글자부터 시작하세요.": [
+    "Start with one character.",
+    "一文字から始めましょう。"
+  ],
+  "1. 왼쪽 문자 모음에서 글자를 고릅니다. 전체 한글·한자는 선택할 때만 작업 데이터가 만들어집니다.": [
+    "1. Choose a character from the set on the left. Hangul and Han glyph data is created only when selected.",
+    "1. 左の文字セットから文字を選びます。ハングルや漢字の作業データは選択したときに作成されます。"
+  ],
+  "2. 펜·직선·도형으로 그립니다. 레이어를 고르면 이동·크기·색·순서·잠금을 바꿀 수 있습니다.": [
+    "2. Draw with the pen, lines and shapes. Select a layer to move, resize, recolor, reorder or lock it.",
+    "2. ペン・直線・図形で描きます。レイヤーを選ぶと移動・サイズ・色・順序・ロックを変更できます。"
+  ],
+  "3. 기준 저장을 눌러 승인본을 남겨 두세요. 템플릿 원본 복원과 실행 취소는 별개입니다.": [
+    "3. Save a reference to keep an approved version. Restoring a template original is separate from Undo.",
+    "3. 基準を保存して承認版を残しましょう。テンプレートの原本への復元と「元に戻す」は別の操作です。"
+  ],
+  "4. 문자 추가에서 문장을 추출하거나 전체 문자열을 하나의 그림에 매핑할 수 있습니다.": [
+    "4. Use Add characters to extract characters from text or map an entire string to one drawing.",
+    "4. 文字の追加で文章から文字を抽出したり、文字列全体を一つの絵に対応付けたりできます。"
+  ],
+  "5. 문장 미리보기에서 프로젝트 그림과 시스템 대체를 구분합니다. 출력한 TTF로 치환 결과도 검사하세요.": [
+    "5. Text preview distinguishes project art from system fallback. Check substitutions with the exported TTF too.",
+    "5. 文章プレビューでプロジェクトの絵とシステムの代替表示を区別できます。出力したTTFの置換結果も確認しましょう。"
+  ],
+  "6. 폰트 내보내기에서 단색·컬러·비트맵 및 한국어·일본어·분할 출력을 선택합니다.": [
+    "6. Export monochrome, color or bitmap fonts, with Korean, Japanese or split output.",
+    "6. 書き出しでは単色・カラー・ビットマップと、韓国語用・日本語用・分割出力を選べます。"
+  ],
+  "단축키: Ctrl+Z 실행 취소 · Ctrl+Y 다시 실행 · Ctrl+S 프로젝트 사본 저장": [
+    "Shortcuts: Ctrl+Z Undo · Ctrl+Y Redo · Ctrl+S Save project copy",
+    "ショートカット: Ctrl+Z 元に戻す · Ctrl+Y やり直す · Ctrl+S プロジェクトのコピーを保存"
+  ],
+  "이미지 원본은 프로젝트에 PNG로 보존합니다. 단색 벡터 변환 전 그림은 기준 버전으로 남깁니다.": [
+    "Original images are stored as PNG in the project. Art is saved as a reference before monochrome vector conversion.",
+    "元の画像はプロジェクトにPNGで保持されます。単色ベクターへの変換前に絵を基準として保存します。"
+  ],
+  "자모 조합은 U+1100 초성·U+1161 중성·U+11A8 종성의 작성 글리프를 이용합니다. 조합 후 각 음절을 개별 수정할 수 있습니다.": [
+    "Jamo composition uses drawn initial U+1100, medial U+1161 and final U+11A8 glyphs. Each syllable can be edited after composition.",
+    "字母の合成には作成済みの初声U+1100・中声U+1161・終声U+11A8のグリフを使います。合成後は各音節を個別に編集できます。"
+  ],
+  "이 앱은 다른 기기나 모든 앱의 이모지를 일괄 변경하지 않습니다. 각 앱에서 출력 폰트를 선택해야 합니다.": [
+    "This app does not replace emoji across all apps or devices. Select your exported font in each app.",
+    "このアプリは他の機器やすべてのアプリの絵文字を一括で変更しません。各アプリで出力したフォントを選択してください。"
+  ],
+  "폰트 패밀리 · {0}": [
+    "Font family · {0}",
+    "フォントファミリー · {0}"
+  ],
+  "최소화": [
+    "Minimize",
+    "最小化"
+  ],
+  "이전 크기로 복원": [
+    "Restore window",
+    "元のサイズに戻す"
+  ],
+  "최대화": [
+    "Maximize",
+    "最大化"
+  ],
+  "시스템": [
+    "System",
+    "システム"
+  ],
+  "라이트": [
+    "Light",
+    "ライト"
+  ],
+  "다크": [
+    "Dark",
+    "ダーク"
+  ],
+  "원본 그림": [
+    "Original artwork",
+    "元の絵"
+  ],
+  "벡터": [
+    "Vector",
+    "ベクター"
+  ],
+  "두들 · 함께 그려요": [
+    "Doodle · Let's draw together",
+    "Doodle · 一緒に描こう"
+  ],
+  "생각하고 있어요": [
+    "Thinking",
+    "考えています"
+  ],
+  "살펴보고 있어요": [
+    "Taking a closer look",
+    "確認しています"
+  ],
+  "그림을 만들고 있어요": [
+    "Creating a drawing",
+    "絵を描いています"
+  ],
+  "색을 고르고 있어요": [
+    "Choosing colors",
+    "色を選んでいます"
+  ],
+  "이야기를 들려드려요": [
+    "Sharing a response",
+    "お話ししています"
+  ],
+  "그림이 준비됐어요": [
+    "Your drawing is ready",
+    "絵ができました"
+  ],
+  "확인이 필요해요": [
+    "Needs attention",
+    "確認してください"
+  ],
+  "두들 표현 방식 비교": [
+    "Compare Doodle styles",
+    "Doodleの表示を比較"
+  ],
+  "같은 동작으로 움직입니다. 질감과 윤곽선을 비교해 보세요.": [
+    "Both use the same motion. Compare the texture and outlines.",
+    "同じ動きで再生します。質感と輪郭を比べてください。"
+  ],
+  "원본의 부드러운 질감": [
+    "Soft texture of the original art",
+    "元の絵の柔らかな質感"
+  ],
+  "곡선으로 그린 또렷한 윤곽": [
+    "Crisp outlines drawn with curves",
+    "曲線で描く鮮明な輪郭"
+  ],
+  "{0} 사용": [
+    "Use {0}",
+    "{0}を使う"
+  ],
+  "작성됨": [
+    "Drawn",
+    "作成済み"
+  ],
+  "의도적 빈칸": [
+    "Intentionally blank",
+    "意図した空白"
+  ],
+  "시스템 표시": [
+    "System display",
+    "システム表示"
+  ],
+  "미지원": [
+    "Unsupported",
+    "未対応"
+  ],
+  "자유로운 선": [
+    "Freehand stroke",
+    "フリーハンドの線"
+  ],
+  "가져온 이미지": [
+    "Imported image",
+    "読み込んだ画像"
+  ],
+  "잠긴 글리프 또는 제어 문자는 변경할 수 없어요.": [
+    "Locked glyphs and control characters cannot be changed.",
+    "ロックされたグリフや制御文字は変更できません。"
+  ],
+  "템플릿 표시 권한이 없어요.": [
+    "Template display is not permitted.",
+    "このテンプレートは表示できません。"
+  ],
+  "복원할 템플릿 원본이 없어요.": [
+    "No template original to restore.",
+    "復元するテンプレートの原本がありません。"
+  ],
+  "잠긴 글리프 또는 제어 문자는 복원할 수 없어요.": [
+    "Locked glyphs and control characters cannot be restored.",
+    "ロックされたグリフや制御文字は復元できません。"
+  ],
+  "복원할 원본 데이터가 없어요. 같은 버전의 원본을 가져와 주세요.": [
+    "Original data is missing. Import the original of the same version.",
+    "復元する原本データがありません。同じバージョンの原本を読み込んでください。"
+  ],
+  "잠금·빈칸·미지원 항목은 AI 적용에서 보호돼요.": [
+    "Locked, blank and unsupported items are protected from AI changes.",
+    "ロック・空白・未対応の項目はAIの変更から保護されます。"
+  ],
+  "후보를 찾을 수 없어요.": [
+    "Candidate not found.",
+    "候補が見つかりません。"
+  ],
+  "후보의 사용 권한을 확인해 주세요.": [
+    "Check the candidate's usage permissions.",
+    "候補の利用権限を確認してください。"
+  ],
+  "참조 출처를 더 저장할 수 없어요.": [
+    "No more source references can be saved.",
+    "参照元をこれ以上保存できません。"
+  ],
+  "연필로 쓴 A": [
+    "Pencilled A",
+    "鉛筆で書いたA"
+  ],
+  "햇살 같은 미소": [
+    "Sunny smile",
+    "陽だまりの笑顔"
+  ],
+  "작은 마음": [
+    "Little heart",
+    "小さなハート"
+  ],
+  "나의 첫 번째 폰트": [
+    "My first font",
+    "はじめてのフォント"
+  ],
+  "한글 음절을 선택해 주세요.": [
+    "Select a Hangul syllable.",
+    "ハングルの音節を選んでください。"
+  ],
+  "완성형 한글 음절을 선택해 주세요.": [
+    "Select a precomposed Hangul syllable.",
+    "完成形のハングル音節を選んでください。"
+  ],
+  "자모 {0} ({1})를 먼저 작성해 주세요.": [
+    "Draw Jamo {0} ({1}) first.",
+    "先に字母{0}（{1}）を作成してください。"
+  ],
+  "이 자모의 템플릿은 조합 출력 권한을 확인해야 해요.": [
+    "Check this Jamo template's permission for composite output.",
+    "この字母テンプレートの合成出力権限を確認してください。"
+  ],
+  "글리프 폭 또는 레이어 개수를 확인해 주세요.": [
+    "Check glyph width or layer count.",
+    "グリフの幅やレイヤー数を確認してください。"
+  ],
+  "레이어 ID가 중복되었어요.": [
+    "Duplicate layer IDs.",
+    "レイヤーIDが重複しています。"
+  ],
+  "지원하지 않는 레이어예요.": [
+    "Unsupported layer.",
+    "未対応のレイヤーです。"
+  ],
+  "그림 좌표·크기 범위를 확인해 주세요.": [
+    "Check drawing coordinates and size bounds.",
+    "絵の座標とサイズの範囲を確認してください。"
+  ],
+  "색상은 #RRGGBB 형식이어야 해요.": [
+    "Colors must use #RRGGBB format.",
+    "色は#RRGGBB形式にしてください。"
+  ],
+  "선의 좌표를 확인해 주세요.": [
+    "Check stroke coordinates.",
+    "線の座標を確認してください。"
+  ],
+  "글자 윤곽선의 좌표와 개수를 확인해 주세요.": [
+    "Check outline coordinates and counts.",
+    "文字の輪郭の座標と数を確認してください。"
+  ],
+  "8MB 이하 PNG 이미지를 사용해 주세요.": [
+    "Use a PNG image of 8 MB or less.",
+    "8 MB以下のPNG画像を使ってください。"
+  ],
+  "템플릿 정보가 너무 길어요.": [
+    "Template information is too long.",
+    "テンプレート情報が長すぎます。"
+  ],
+  "Doodle Font 버전 1 프로젝트가 아니에요.": [
+    "This is not a Doodle Font version 1 project.",
+    "Doodle Fontのバージョン1形式のプロジェクトではありません。"
+  ],
+  "프로젝트 이름을 확인해 주세요.": [
+    "Check the project name.",
+    "プロジェクト名を確認してください。"
+  ],
+  "프로젝트 항목이 너무 많아요.": [
+    "Too many project items.",
+    "プロジェクトの項目が多すぎます。"
+  ],
+  "팔레트에는 최대 64개의 #RRGGBB 색상을 보관해요.": [
+    "The palette can hold up to 64 #RRGGBB colors.",
+    "パレットには#RRGGBB形式の色を最大64色保存できます。"
+  ],
+  "글리프 ID 또는 문자·지역 매핑이 중복되었어요.": [
+    "Duplicate glyph IDs or character/locale mappings.",
+    "グリフIDまたは文字・地域のマッピングが重複しています。"
+  ],
+  "문자 매핑을 확인해 주세요.": [
+    "Check the character mapping.",
+    "文字のマッピングを確認してください。"
+  ],
+  "글리프 상태를 확인해 주세요.": [
+    "Check the glyph status.",
+    "グリフの状態を確認してください。"
+  ],
+  "AI 후보는 최대 50개까지 보관해요.": [
+    "Up to 50 AI candidates can be stored.",
+    "AI候補は最大50件まで保存できます。"
+  ],
+  "참조 템플릿은 글리프당 100개 이하여야 해요.": [
+    "Each glyph can reference up to 100 templates.",
+    "参照テンプレートはグリフごとに100件以下にしてください。"
+  ],
+  "제어 문자는 확인 전용 상태로 보관해야 해요.": [
+    "Control characters must remain read only.",
+    "制御文字は読み取り専用の状態で保存してください。"
+  ],
+  "글리프 치환 규칙이 너무 많아요. 문자 집합별로 분할해 주세요.": [
+    "Too many substitution rules. Split the export by character set.",
+    "文字の置換規則が多すぎます。文字セットごとに分割してください。"
+  ],
+  "PNG 원본이 아니에요.": [
+    "Not an original PNG.",
+    "PNGの原本ではありません。"
+  ],
+  "이미지 인코딩 오류": [
+    "Image encoding error",
+    "画像のエンコードエラー"
+  ],
+  "4096 × 4096 이하 PNG를 사용해 주세요.": [
+    "Use a PNG of 4096 × 4096 or smaller.",
+    "4096 × 4096以下のPNGを使ってください。"
+  ],
+  "윤곽선이 너무 복잡해요. 선 보정이나 레이어 단순화를 적용해 주세요.": [
+    "Outlines are too complex. Smooth strokes or simplify layers.",
+    "輪郭が複雑すぎます。線を補正するかレイヤーを簡略化してください。"
+  ],
+  "OTF 윤곽선이 너무 복잡해요. 레이어를 단순화하거나 TTF·WOFF 형식을 선택해 주세요.": [
+    "OTF outlines are too complex. Simplify layers or choose TTF or WOFF.",
+    "OTFの輪郭が複雑すぎます。レイヤーを簡略化するかTTF・WOFF形式を選んでください。"
+  ],
+  "이미지 크기 오류": [
+    "Image size error",
+    "画像サイズのエラー"
+  ],
+  "이미지 생성 오류": [
+    "Image creation error",
+    "画像生成のエラー"
+  ],
+  "출력 형식을 확인해 주세요.": [
+    "Check the output format.",
+    "出力形式を確認してください。"
+  ],
+  "sbix 비트맵 출력: 글리프 그림은 1000 × 1000 작업 영역으로 잘립니다. 외부 앱의 컬러 폰트 지원을 확인하세요.": [
+    "SBIX bitmap output: glyph art is clipped to the 1000 × 1000 canvas. Check color font support in external apps.",
+    "SBIXビットマップ出力: 絵は1000 × 1000の作業領域で切り取られます。外部アプリのカラーフォント対応を確認してください。"
+  ],
+  "글리프 수가 65,535개를 넘어요. 분할 출력해 주세요.": [
+    "More than 65,535 glyphs. Split the export.",
+    "グリフが65,535個を超えています。分割出力してください。"
+  ],
+  "컬러 레이어가 너무 많아요. 분할 출력해 주세요.": [
+    "Too many color layers. Split the export.",
+    "カラーレイヤーが多すぎます。分割出力してください。"
+  ],
+  "입력 부품까지 포함하면 65,535개를 넘어요.": [
+    "The count exceeds 65,535 including input components.",
+    "入力パーツを含めると65,535個を超えます。"
+  ],
+  "문자열 치환용 빈 입력 글리프: {0}. 단독 표시가 필요하면 각 문자도 작성하세요.": [
+    "Empty input glyphs for string substitution: {0}. Draw each character too if it needs to appear alone.",
+    "文字列置換用の空の入力グリフ: {0}。単独で表示する場合は各文字も作成してください。"
+  ],
+  "출력 폰트 검증 실패: {0}": [
+    "Exported font validation failed: {0}",
+    "出力フォントの検証に失敗しました: {0}"
+  ],
+  "지원하지 않는 폰트 파일 포맷이에요.": [
+    "Unsupported font file format.",
+    "未対応のフォント形式です。"
+  ],
+  "출력할 작성 글리프가 없어요. 글자를 그리거나 빈칸으로 지정해 주세요.": [
+    "No drawn glyphs to export. Draw a character or mark it as blank.",
+    "出力する作成済みグリフがありません。文字を描くか空白に指定してください。"
+  ],
+  "'{0}' 템플릿에 폰트 포함 권한이 없어요.": [
+    "Template '{0}' does not permit font embedding.",
+    "テンプレート「{0}」はフォントへの収録を許可していません。"
+  ],
+  "폰트 읽기 오류: {0}": [
+    "Font read error: {0}",
+    "フォントの読み取りエラー: {0}"
+  ],
+  "폰트 셰이핑 오류": [
+    "Font shaping error",
+    "フォントのシェーピングエラー"
+  ],
+  "미리보기 크기가 너무 커요.": [
+    "Preview size is too large.",
+    "プレビューのサイズが大きすぎます。"
+  ],
+  "미리보기 생성 오류": [
+    "Preview creation error",
+    "プレビュー生成のエラー"
+  ],
+  "64MB 이하 프로젝트를 열어 주세요.": [
+    "Open a project of 64 MB or less.",
+    "64 MB以下のプロジェクトを開いてください。"
+  ],
+  "프로젝트 파일을 읽을 수 없어요: {0}": [
+    "Cannot read the project file: {0}",
+    "プロジェクトファイルを読み取れません: {0}"
+  ],
+  "프로젝트가 64MB를 넘어요. 이미지를 줄이거나 프로젝트를 나눠 주세요.": [
+    "The project exceeds 64 MB. Reduce images or split the project.",
+    "プロジェクトが64 MBを超えています。画像を減らすかプロジェクトを分割してください。"
+  ],
+  "AI 글자 스타일의 범위가 올바르지 않아요. 다시 요청해 주세요.": [
+    "AI glyph style values are out of range. Please try again.",
+    "AIの文字スタイルの値が範囲外です。もう一度リクエストしてください。"
+  ],
+  "현재 그림의 형태를 유지하고 획 굵기를 통일했어요.": [
+    "Stroke widths unified while preserving the current drawing's shape.",
+    "現在の絵の形を維持して線の太さを統一しました。"
+  ],
+  "글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요.": [
+    "Vertical strokes extend outside the canvas. Choose another font style.",
+    "上下の線が作業領域を超えています。別のフォントスタイルを選んでください。"
+  ],
+  "{0} · 글자 형태": [
+    "{0} · Glyph form",
+    "{0} · 字形"
+  ],
+  "명조": [
+    "Serif",
+    "明朝"
+  ],
+  "손글씨": [
+    "Handwriting",
+    "手書き"
+  ],
+  "고딕": [
+    "Sans serif",
+    "ゴシック"
+  ],
+  " 이 문자는 손글씨 자형이 없어 고딕 자형을 사용했어요.": [
+    " No handwritten form was available for this character, so a sans serif form was used.",
+    " この文字には手書き字形がないため、ゴシック字形を使いました。"
+  ],
+  "글자 형태를 보존해 {0} 스타일로 만들었어요.{1}": [
+    "Created a {0} style while preserving the character's form.{1}",
+    "文字の形を維持して{0}スタイルで作成しました。{1}"
+  ],
+  "이 문자는 내장 자형에 없어요. 직접 그린 기준 그림을 준비해 ‘현재 그림을 유지해서 보정’해 주세요.": [
+    "This character has no built-in outline. Draw a reference first, then ask to refine it while preserving the current drawing.",
+    "この文字には内蔵字形がありません。基準となる絵を描き、「現在の絵を維持して補正」と依頼してください。"
+  ],
+  "내장 글꼴 오류: {0}": [
+    "Built-in font error: {0}",
+    "内蔵フォントのエラー: {0}"
+  ],
+  "내장 글꼴을 읽지 못했어요.": [
+    "Could not read the built-in font.",
+    "内蔵フォントを読み取れませんでした。"
+  ],
+  "일부 문자의 정확한 자형을 찾지 못했어요.": [
+    "Exact outlines could not be found for some characters.",
+    "一部の文字の正確な字形が見つかりませんでした。"
+  ],
+  "그릴 수 있는 글자 윤곽이 없어요.": [
+    "No drawable character outlines.",
+    "描画できる文字の輪郭がありません。"
+  ],
+  "잠금·빈칸·제어 문자·미지원 항목은 AI 생성에서 보호돼요.": [
+    "Locked, blank, control and unsupported items are protected from AI generation.",
+    "ロック・空白・制御文字・未対応の項目はAI生成から保護されます。"
+  ],
+  "템플릿의 AI 전송·편집 권한이 없어요.": [
+    "The template does not permit AI transmission or editing.",
+    "このテンプレートはAIへの送信または編集を許可していません。"
+  ],
+  "프롬프트는 8,000바이트 이하여야 해요.": [
+    "Prompts must be 8,000 bytes or less.",
+    "プロンプトは8,000バイト以下にしてください。"
+  ],
+  "API 키를 입력해 주세요.": [
+    "Enter an API key.",
+    "APIキーを入力してください。"
+  ],
+  "API 주소를 확인해 주세요.": [
+    "Check the API URL.",
+    "APIのURLを確認してください。"
+  ],
+  "외부 API에는 HTTPS 주소를 사용해 주세요.": [
+    "Use HTTPS for external APIs.",
+    "外部APIにはHTTPSを使ってください。"
+  ],
+  "API 방식과 모델 이름을 입력해 주세요.": [
+    "Enter the API type and model name.",
+    "APIの方式とモデル名を入力してください。"
+  ],
+  "그림 정보가 없어요.": [
+    "No drawing information.",
+    "絵の情報がありません。"
+  ],
+  "AI에 연결하지 못했어요. 주소와 네트워크를 확인해 주세요.": [
+    "Could not connect to AI. Check the URL and network.",
+    "AIに接続できませんでした。URLとネットワークを確認してください。"
+  ],
+  "AI 응답 오류 ({0}). 주소·모델·키를 확인해 주세요.": [
+    "AI response error ({0}). Check the URL, model and key.",
+    "AIの応答エラー（{0}）。URL・モデル・キーを確認してください。"
+  ],
+  "AI 응답을 읽지 못했어요.": [
+    "Could not read the AI response.",
+    "AIの応答を読み取れませんでした。"
+  ],
+  "AI 응답이 너무 커요.": [
+    "AI response is too large.",
+    "AIの応答が大きすぎます。"
+  ],
+  "AI 응답이 JSON 형식이 아니에요.": [
+    "AI response is not JSON.",
+    "AIの応答がJSON形式ではありません。"
+  ],
+  "AI 응답이 비어 있어요.": [
+    "AI response is empty.",
+    "AIの応答が空です。"
+  ],
+  "AI가 올바른 그림을 반환하지 않았어요.": [
+    "AI did not return valid artwork.",
+    "AIが有効な絵を返しませんでした。"
+  ],
+  "AI 그림에 레이어가 없어요.": [
+    "AI artwork has no layers.",
+    "AIの絵にレイヤーがありません。"
+  ],
+  "AI 레이어가 너무 많아요.": [
+    "Too many AI layers.",
+    "AIのレイヤーが多すぎます。"
+  ],
+  "AI 레이어 형식 오류": [
+    "Invalid AI layer format",
+    "AIレイヤーの形式エラー"
+  ],
+  "AI 도형의 가로·세로 크기가 올바르지 않아요. 다시 요청해 주세요.": [
+    "AI shape width or height is invalid. Please try again.",
+    "AI図形の幅または高さが無効です。もう一度リクエストしてください。"
+  ],
+  "AI 후보 레이어": [
+    "AI candidate layer",
+    "AI候補レイヤー"
+  ],
+  "AI 레이어는 path·rect·ellipse 형식이어야 해요.": [
+    "AI layers must be path, rect or ellipse.",
+    "AIレイヤーはpath・rect・ellipse形式にしてください。"
+  ],
+  "AI 선의 점은 500개 이하여야 해요.": [
+    "AI strokes must have 500 points or fewer.",
+    "AIの線の点は500個以下にしてください。"
+  ],
+  "AI 그림 형식이 맞지 않아요.": [
+    "Invalid AI artwork format.",
+    "AIの絵の形式が正しくありません。"
+  ],
+  "AI가 보이는 그림을 반환하지 않았어요. 후보를 저장하지 않았습니다. 다시 만들어 주세요.": [
+    "AI returned no visible artwork. No candidates were saved. Please try again.",
+    "AIが見える絵を返しませんでした。候補は保存していません。もう一度生成してください。"
+  ],
+  "AI가 글자 스타일을 올바르게 반환하지 않았어요. 다시 요청해 주세요.": [
+    "AI did not return a valid glyph style. Please try again.",
+    "AIが有効な文字スタイルを返しませんでした。もう一度リクエストしてください。"
+  ],
+  "선택한 AI가 원래 요청을 처리했어요.": [
+    "Your selected AI handled the original request.",
+    "選択したAIが元のリクエストを処理しました。"
+  ],
+  "앞단 판단이 불확실하거나 사용할 수 없어 선택한 AI로 넘겼어요.": [
+    "Input assessment was uncertain or unavailable, so the request went to your selected AI.",
+    "入力の判断が不確か、または利用できなかったため、選択したAIに渡しました。"
+  ],
+  "AI 사용이 꺼져 있어요.": [
+    "AI is turned off.",
+    "AIは無効になっています。"
+  ],
+  "판단 AI 옵션을 확인해 주세요.": [
+    "Check decision AI options.",
+    "判断AIの設定を確認してください。"
+  ],
+  "AI 작업을 취소했어요.": [
+    "AI task cancelled.",
+    "AIの処理をキャンセルしました。"
+  ],
+  "입력 판단 중 · Needle 3": [
+    "Assessing input · Needle 3",
+    "入力を判断中 · Needle 3"
+  ],
+  "AI 실행 전 요청 확인 중": [
+    "Checking the request before running AI",
+    "AI実行前にリクエストを確認中"
+  ],
+  "간단한 편집 후보를 구성하는 중": [
+    "Preparing a simple edit candidate",
+    "簡単な編集候補を作成中"
+  ],
+  "선택한 AI로 요청 전달 중": [
+    "Sending request to selected AI",
+    "選択したAIにリクエストを送信中"
+  ],
+  "Needle 3의 판단을 확인해 간단한 편집 후보를 만들었어요. 생성 AI는 호출하지 않았습니다.": [
+    "Validated Needle 3's decision and created a simple edit candidate without calling generative AI.",
+    "Needle 3の判断を検証し、簡単な編集候補を作成しました。生成AIは呼び出していません。"
+  ],
+  "로컬 AI 실행 실패: {0}": [
+    "Local AI failed to start: {0}",
+    "ローカルAIの起動に失敗しました: {0}"
+  ],
+  "로컬 AI 실행이 중단되었어요. 모델 파일과 메모리를 확인해 주세요.": [
+    "Local AI stopped. Check model files and available memory.",
+    "ローカルAIが停止しました。モデルファイルとメモリを確認してください。"
+  ],
+  "로컬 모델 준비 시간이 초과되었어요.": [
+    "Local model preparation timed out.",
+    "ローカルモデルの準備がタイムアウトしました。"
+  ],
+  "Gemma 4 E2B 어시스턴트 준비 중": [
+    "Preparing Gemma 4 E2B assistant",
+    "Gemma 4 E2Bアシスタントを準備中"
+  ],
+  "그림 후보를 그리는 중": [
+    "Drawing candidates",
+    "描画候補を作成中"
+  ],
+  "그림을 확인하고 답변 작성 중": [
+    "Inspecting drawing and writing a reply",
+    "絵を確認して返信を作成中"
+  ],
+  "AI가 그림을 확인하고 작업 중": [
+    "AI is reviewing the drawing and working",
+    "AIが絵を確認して処理中"
+  ],
+  "판단할 입력이 너무 길어요.": [
+    "Input is too long to assess.",
+    "判断する入力が長すぎます。"
+  ],
+  "판단 모델이 설치되지 않았어요.": [
+    "Decision model is not installed.",
+    "判断モデルがインストールされていません。"
+  ],
+  "판단 모델을 실행하지 못했어요.": [
+    "Could not start the decision model.",
+    "判断モデルを起動できませんでした。"
+  ],
+  "판단 모델이 종료되었어요.": [
+    "Decision model stopped.",
+    "判断モデルが終了しました。"
+  ],
+  "판단 모델에 연결하지 못했어요.": [
+    "Could not connect to the decision model.",
+    "判断モデルに接続できませんでした。"
+  ],
+  "판단 모델이 오류를 반환했어요.": [
+    "Decision model returned an error.",
+    "判断モデルがエラーを返しました。"
+  ],
+  "판단 응답이 끊겼어요.": [
+    "Decision response was interrupted.",
+    "判断の応答が途切れました。"
+  ],
+  "판단 응답이 너무 커요.": [
+    "Decision response is too large.",
+    "判断の応答が大きすぎます。"
+  ],
+  "판단 응답 형식이 맞지 않아요.": [
+    "Invalid decision response format.",
+    "判断の応答形式が正しくありません。"
+  ],
+  "판단 시간이 초과되었어요.": [
+    "Decision timed out.",
+    "判断がタイムアウトしました。"
+  ],
+  "AI 연결 설정 파일이 너무 커요.": [
+    "AI connection settings file is too large.",
+    "AI接続設定ファイルが大きすぎます。"
+  ],
+  "AI 연결 설정을 읽지 못했어요. 파일 접근 권한을 확인해 주세요.": [
+    "Could not read AI connection settings. Check file permissions.",
+    "AI接続設定を読み取れませんでした。ファイルのアクセス権を確認してください。"
+  ],
+  "AI 연결 설정 파일이 손상됐어요. 기존 파일은 보존합니다.": [
+    "AI connection settings file is damaged. The existing file is preserved.",
+    "AI接続設定ファイルが破損しています。既存のファイルは保持します。"
+  ],
+  "AI 연결 설정 형식이 맞지 않아요. 기존 파일은 보존합니다.": [
+    "Invalid AI connection settings format. The existing file is preserved.",
+    "AI接続設定の形式が正しくありません。既存のファイルは保持します。"
+  ],
+  "저장된 AI 제공자를 확인할 수 없어요.": [
+    "Could not identify the saved AI provider.",
+    "保存済みのAI提供元を確認できません。"
+  ],
+  "AI 연결 설정을 준비하지 못했어요.": [
+    "Could not prepare AI connection settings.",
+    "AI接続設定を準備できませんでした。"
+  ],
+  "AI 연결 설정이 너무 커요.": [
+    "AI connection settings are too large.",
+    "AI接続設定が大きすぎます。"
+  ],
+  "AI 설정 폴더를 찾지 못했어요.": [
+    "AI settings folder not found.",
+    "AI設定フォルダーが見つかりません。"
+  ],
+  "AI 설정 폴더를 만들지 못했어요.": [
+    "Could not create the AI settings folder.",
+    "AI設定フォルダーを作成できませんでした。"
+  ],
+  "AI 연결 설정을 저장하지 못했어요. 폴더 권한을 확인하고 다시 저장해 주세요.": [
+    "Could not save AI connection settings. Check folder permissions and save again.",
+    "AI接続設定を保存できませんでした。フォルダーの権限を確認して再度保存してください。"
+  ],
+  "AI 설정이 너무 커요.": [
+    "AI settings are too large.",
+    "AI設定が大きすぎます。"
+  ],
+  "Windows가 API 키를 암호화하지 못했어요. 키는 이번 실행에서만 사용됩니다.": [
+    "Windows could not encrypt the API key. It will only be used for this session.",
+    "WindowsがAPIキーを暗号化できませんでした。キーは今回の起動中のみ使用されます。"
+  ],
+  "저장된 AI 연결을 복원하지 못했어요. 저장한 Windows 계정에서 실행하거나 연결 정보를 다시 입력해 주세요.": [
+    "Could not restore the saved AI connection. Use the Windows account that saved it, or enter the details again.",
+    "保存済みのAI接続を復元できませんでした。保存したWindowsアカウントで実行するか、接続情報を再入力してください。"
+  ],
+  "API 키의 암호화 저장은 Windows에서 사용할 수 있어요.": [
+    "Encrypted API key storage is available on Windows.",
+    "APIキーの暗号化保存はWindowsで利用できます。"
+  ],
+  "{0} · 기존 파일 검증 중": [
+    "{0} · Verifying existing file",
+    "{0} · 既存のファイルを検証中"
+  ],
+  " (이어받기)": [
+    " (resuming)",
+    "（再開中）"
+  ],
+  "{0} · 연결 중{1}": [
+    "{0} · Connecting{1}",
+    "{0} · 接続中{1}"
+  ],
+  "연결 실패: {0}": [
+    "Connection failed: {0}",
+    "接続に失敗しました: {0}"
+  ],
+  "서버 응답 {0}": [
+    "Server response {0}",
+    "サーバーの応答 {0}"
+  ],
+  "서버의 이어받기 범위가 올바르지 않아요.": [
+    "Invalid download resume range from server.",
+    "サーバーの再開範囲が正しくありません。"
+  ],
+  "저장 공간·권한을 확인해 주세요: {0}": [
+    "Check storage space and permissions: {0}",
+    "保存容量と権限を確認してください: {0}"
+  ],
+  "다운로드 연결이 끊겼어요.": [
+    "Download connection lost.",
+    "ダウンロードの接続が切れました。"
+  ],
+  "다운로드 크기가 예상보다 커요.": [
+    "Download is larger than expected.",
+    "ダウンロードのサイズが想定より大きいです。"
+  ],
+  "다운로드가 중간에 끊겼어요.": [
+    "Download interrupted.",
+    "ダウンロードが途中で切れました。"
+  ],
+  "{0} · SHA256 검증 중": [
+    "{0} · Verifying SHA256",
+    "{0} · SHA256を検証中"
+  ],
+  "파일 검증에 실패했어요. 새로 내려받습니다.": [
+    "File verification failed. Downloading again.",
+    "ファイルの検証に失敗しました。再ダウンロードします。"
+  ],
+  "파일을 교체하지 못했어요. 실행 중인 다른 AI 작업을 종료해 주세요: {0}": [
+    "Could not replace file. Close other running AI tasks: {0}",
+    "ファイルを置き換えられませんでした。他のAI処理を終了してください: {0}"
+  ],
+  "{0} · 재시도 {1}/3: {2}": [
+    "{0} · Retry {1}/3: {2}",
+    "{0} · 再試行 {1}/3: {2}"
+  ],
+  "실행기 압축 파일에 항목이 너무 많아요.": [
+    "Too many entries in the runtime archive.",
+    "実行プログラムのアーカイブに項目が多すぎます。"
+  ],
+  "실행기 압축 경로가 올바르지 않아요.": [
+    "Invalid path in the runtime archive.",
+    "実行プログラムのアーカイブ内のパスが正しくありません。"
+  ],
+  "실행기 압축 내용이 올바르지 않아요.": [
+    "Invalid runtime archive contents.",
+    "実行プログラムのアーカイブ内容が正しくありません。"
+  ],
+  "실행기가 압축 파일에 없어요.": [
+    "Runtime executable is missing from the archive.",
+    "アーカイブに実行プログラムがありません。"
+  ],
+  "실행기를 교체하지 못했어요. 다른 AI 작업을 종료하고 다시 시도해 주세요: {0}": [
+    "Could not replace runtime. Close other AI tasks and retry: {0}",
+    "実行プログラムを置き換えられませんでした。他のAI処理を終了して再試行してください: {0}"
+  ],
+  "설치 폴더를 만들지 못했어요: {0}": [
+    "Could not create installation folder: {0}",
+    "インストールフォルダーを作成できませんでした: {0}"
+  ],
+  "다른 창에서 로컬 AI를 설치 중이에요. 완료 후 다시 확인해 주세요.": [
+    "Local AI is being installed in another window. Check again after it finishes.",
+    "別のウィンドウでローカルAIをインストール中です。完了後に再確認してください。"
+  ],
+  "실행기 압축 해제 중": [
+    "Extracting runtime",
+    "実行プログラムを展開中"
+  ],
+  "설치 후 확인이 필요해요: {0}": [
+    "Post-installation check needed: {0}",
+    "インストール後の確認が必要です: {0}"
+  ],
+  "설치 완료 · AI를 사용할 수 있어요": [
+    "Installation complete · AI is ready",
+    "インストール完了 · AIを使えます"
+  ],
+  "글자의 자연스러운 비율을 유지하면 설정한 폭과 여백을 넘어요. 더 좁은 스타일을 요청하거나 글자 폭 설정을 확인해 주세요.": [
+    "Natural proportions exceed the chosen width and margins. Request a narrower style or check the glyph width setting.",
+    "自然な縦横比を保つと設定した幅と余白を超えます。幅の狭いスタイルを依頼するか文字幅の設定を確認してください。"
+  ],
+  "대문자 높이": [
+    "Cap height",
+    "大文字の高さ"
+  ],
+  "중심선": [
+    "Midline",
+    "中心線"
+  ],
+  "기준선": [
+    "Baseline",
+    "ベースライン"
+  ],
+  "하강 한계": [
+    "Descender limit",
+    "ディセンダー下限"
+  ],
+  "AI 그림에서 기준선 아래로 내려오는 획이 확인되지 않아요. g·j·p·q·y의 하강 획을 포함해 다시 만들어 주세요.": [
+    "No strokes extend below the baseline. Regenerate with descenders for g, j, p, q and y.",
+    "ベースラインより下に伸びる線がありません。g・j・p・q・yのディセンダーを含めて再生成してください。"
+  ],
+  "AI 그림이 작업 영역의 위아래를 벗어났어요. 가이드라인 안에 맞춰 다시 만들어 주세요.": [
+    "AI art extends above or below the canvas. Regenerate within the guides.",
+    "AIの絵が作業領域の上下を超えています。ガイド内に収まるように再生成してください。"
+  ],
+  "Windows 호환 문자 매핑 표가 너무 커요. 문자 모음별 분할 출력을 사용하거나 출력 범위를 줄여 주세요.": [
+    "The Windows-compatible mapping table is too large. Split by character set or reduce the export scope.",
+    "Windows互換の文字マッピング表が大きすぎます。文字セットごとに分割するか出力範囲を減らしてください。"
+  ],
+  "OTF 윤곽선 사이의 거리가 너무 커요. 그림의 크기나 위치를 줄여 주세요.": [
+    "OTF outlines are too far apart. Reduce the drawing's size or position offset.",
+    "OTFの輪郭間の距離が大きすぎます。絵のサイズや位置のずれを小さくしてください。"
+  ],
+  "폰트가 너무 커요. 문자 모음별로 분할 출력해 주세요.": [
+    "Font is too large. Split by character set.",
+    "フォントが大きすぎます。文字セットごとに分割出力してください。"
+  ],
+  "OTF 글리프 수가 너무 많아요.": [
+    "Too many OTF glyphs.",
+    "OTFのグリフが多すぎます。"
+  ],
+  "OTF가 너무 커요. 분할 출력해 주세요.": [
+    "OTF is too large. Split the export.",
+    "OTFが大きすぎます。分割出力してください。"
+  ],
+  "웹폰트 원본 오류: {0}": [
+    "Web font source error: {0}",
+    "ウェブフォントの原本エラー: {0}"
+  ],
+  "웹폰트 크기 오류": [
+    "Web font size error",
+    "ウェブフォントのサイズエラー"
+  ],
+  "웹폰트 테이블 오류": [
+    "Web font table error",
+    "ウェブフォントのテーブルエラー"
+  ],
+  "Windows에서 읽기에 폰트가 너무 커요. 분할 출력해 주세요.": [
+    "Font is too large for Windows to read. Split the export.",
+    "Windowsで読み込むにはフォントが大きすぎます。分割出力してください。"
+  ],
+  "Windows에서 이 폰트를 읽지 못했어요. 파일을 저장하지 않았습니다. 출력 범위를 줄여 다시 시도해 주세요.": [
+    "Windows could not read this font. No file was saved. Reduce the export scope and try again.",
+    "Windowsがこのフォントを読み込めませんでした。ファイルは保存していません。出力範囲を減らして再試行してください。"
+  ],
+  "Windows에서 출력 폰트의 글꼴 정보를 확인하지 못했어요.": [
+    "Windows could not read the exported font's typeface information.",
+    "Windowsが出力フォントの書体情報を確認できませんでした。"
+  ],
+  "라틴 알파벳": [
+    "Latin alphabet",
+    "ラテン文字"
+  ],
+  "확장 라틴 · 결합 부호": [
+    "Extended Latin · Combining marks",
+    "拡張ラテン文字・結合記号"
+  ],
+  "한글": [
+    "Hangul",
+    "ハングル"
+  ],
+  "한글 자모 · 옛한글": [
+    "Hangul Jamo · Old Hangul",
+    "ハングル字母・古ハングル"
+  ],
+  "한국한자": [
+    "Korean Hanja",
+    "韓国漢字"
+  ],
+  "히라가나 · 가타카나": [
+    "Hiragana · Katakana",
+    "ひらがな・カタカナ"
+  ],
+  "일본한자": [
+    "Japanese Kanji",
+    "日本漢字"
+  ],
+  "기호 · 이모지": [
+    "Symbols · Emoji",
+    "記号・絵文字"
+  ],
+  "공백 · 제어 문자": [
+    "Whitespace · Controls",
+    "空白・制御文字"
+  ],
+  "사용자 정의": [
+    "Custom",
+    "カスタム"
+  ],
+  "시스템 설정 따르기": [
+    "Follow system language",
+    "システムの言語に従う"
+  ],
+  "설정에서 로컬 AI를 선택하면 설치할 수 있어요.": [
+    "Select Local AI in settings to install it.",
+    "設定でローカルAIを選択してインストールしてください。"
+  ]
+}

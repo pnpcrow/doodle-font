@@ -1,4 +1,5 @@
 //! Local display preferences and the two native egui palettes.
+use crate::i18n::text as tr;
 use eframe::egui::{self, Color32, FontId, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -14,9 +15,9 @@ pub enum Theme {
 impl Theme {
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => "시스템",
-            Self::Light => "라이트",
-            Self::Dark => "다크",
+            Self::System => tr("시스템"),
+            Self::Light => tr("라이트"),
+            Self::Dark => tr("다크"),
         }
     }
     pub fn preference(self) -> egui::ThemePreference {
@@ -30,6 +31,7 @@ impl Theme {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
+    pub language: crate::i18n::Language,
     pub theme: Theme,
     pub reduce_motion: bool,
     pub companion_renderer: crate::companion::Renderer,

@@ -2,6 +2,7 @@
 //! and streams the original tables through Brotli, avoiding a second raw-font copy.
 //! Specs: Adobe TN 5176/5177 and https://www.w3.org/TR/WOFF2/ (also /WOFF/).
 use super::{check, Outline, B};
+use crate::i18n::{format as tf, text as tr};
 use std::io::{Read, Write};
 
 fn number(b: &mut B, v: i16) {
@@ -39,9 +40,9 @@ pub(super) fn charstring(
             .enumerate()
         {
             for axis in 0..2 {
-                let delta = pt[axis].checked_sub(prev[axis]).ok_or(
+                let delta = pt[axis].checked_sub(prev[axis]).ok_or(tr(
                     "OTF 윤곽선 사이의 거리가 너무 커요. 그림의 크기나 위치를 줄여 주세요.",
-                )?;
+                ))?;
                 number(&mut b, delta);
             }
             b.0.push(if i == 0 { 21 } else { 5 }); // rmoveto / rlineto
@@ -53,12 +54,12 @@ pub(super) fn charstring(
 }
 
 fn size(v: usize) -> Result<u32, String> {
-    u32::try_from(v).map_err(|_| "폰트가 너무 커요. 문자 모음별로 분할 출력해 주세요.".into())
+    u32::try_from(v).map_err(|_| tr("폰트가 너무 커요. 문자 모음별로 분할 출력해 주세요.").into())
 }
 
 fn index(items: &[&[u8]]) -> Result<B, String> {
     let mut b = B::default();
-    b.u16(u16::try_from(items.len()).map_err(|_| "OTF 글리프 수가 너무 많아요.")?);
+    b.u16(u16::try_from(items.len()).map_err(|_| tr("OTF 글리프 수가 너무 많아요."))?);
     if items.is_empty() {
         return Ok(b);
     }
@@ -145,7 +146,7 @@ pub(super) fn cff(name: &str, outlines: &[Outline], bounds: [i16; 4]) -> Result<
     let private_off = fd_off + font_dict(0)?.0.len();
     check(
         private_off <= i32::MAX as usize,
-        "OTF가 너무 커요. 분할 출력해 주세요.",
+        tr("OTF가 너무 커요. 분할 출력해 주세요."),
     )?;
     let top = top_dict(charset_off, chars_off, fd_off, select_off)?;
     let fd = font_dict(private_off)?;
@@ -168,16 +169,16 @@ struct Table<'a> {
     data: &'a [u8],
 }
 fn tables(sfnt: &[u8]) -> Result<Vec<Table<'_>>, String> {
-    let face =
-        ttf_parser::RawFace::parse(sfnt, 0).map_err(|e| format!("웹폰트 원본 오류: {e:?}"))?;
+    let face = ttf_parser::RawFace::parse(sfnt, 0)
+        .map_err(|e| tf("웹폰트 원본 오류: {0}", &[format!("{:?}", e)]))?;
     face.table_records
         .into_iter()
         .map(|r| {
             let start = r.offset as usize;
             let end = start
                 .checked_add(r.length as usize)
-                .ok_or("웹폰트 크기 오류")?;
-            let data = sfnt.get(start..end).ok_or("웹폰트 테이블 오류")?;
+                .ok_or(tr("웹폰트 크기 오류"))?;
+            let data = sfnt.get(start..end).ok_or(tr("웹폰트 테이블 오류"))?;
             Ok(Table {
                 tag: r.tag.to_bytes(),
                 checksum: r.check_sum,

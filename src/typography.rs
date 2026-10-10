@@ -1,4 +1,5 @@
 //! Local AI chooses style; a font shaper preserves the exact text and its counters.
+use crate::i18n::{format as tf, text as tr};
 use crate::{
     document::{new_shape, uid},
     glyph_layout::{self, BASELINE, CAP_TOP, DESCENT_BOTTOM, EM},
@@ -55,7 +56,7 @@ impl Style {
                 && self.color.len() == 7
                 && self.color.starts_with('#')
                 && self.color[1..].bytes().all(|b| b.is_ascii_hexdigit()),
-            "AI 글자 스타일의 범위가 올바르지 않아요. 다시 요청해 주세요.",
+            tr("AI 글자 스타일의 범위가 올바르지 않아요. 다시 요청해 주세요."),
         )
     }
 }
@@ -249,7 +250,7 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
         return Ok(Generated {
             artwork: art,
             sources: vec![],
-            note: "현재 그림의 형태를 유지하고 획 굵기를 통일했어요.".into(),
+            note: tr("현재 그림의 형태를 유지하고 획 굵기를 통일했어요.").into(),
         });
     }
     let Outlined {
@@ -269,10 +270,10 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
             .iter()
             .flatten()
             .all(|p| (0.0..=DESCENT_BOTTOM + 0.01).contains(&p[1])),
-        "글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요.",
+        tr("글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요."),
     )?;
     let mut shape = new_shape("outline");
-    shape.name = format!("{} · 글자 형태", glyph.text);
+    shape.name = tf("{0} · 글자 형태", std::slice::from_ref(&glyph.text));
     shape.x = 0.;
     shape.y = 0.;
     shape.width = EM;
@@ -293,18 +294,22 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
     Ok(Generated {
         artwork,
         sources: vec![source(bytes, name)],
-        note: format!(
-            "글자 형태를 보존해 {} 스타일로 만들었어요.{}",
-            match style.family.as_str() {
-                "serif" => "명조",
-                "handwritten" => "손글씨",
-                _ => "고딕",
-            },
-            if fallback {
-                " 이 문자는 손글씨 자형이 없어 고딕 자형을 사용했어요."
-            } else {
-                ""
-            }
+        note: tf(
+            "글자 형태를 보존해 {0} 스타일로 만들었어요.{1}",
+            &[
+                (match style.family.as_str() {
+                    "serif" => tr("명조"),
+                    "handwritten" => tr("손글씨"),
+                    _ => tr("고딕"),
+                })
+                .to_string(),
+                (if fallback {
+                    tr(" 이 문자는 손글씨 자형이 없어 고딕 자형을 사용했어요.")
+                } else {
+                    ""
+                })
+                .to_string(),
+            ],
         ),
     })
 }
@@ -366,11 +371,11 @@ fn outline(glyph: &Glyph, style: &Style) -> Result<Outlined, String> {
         name = "Noto Sans CJK";
         fallback = true;
     }
-    check(supports(bytes),"이 문자는 내장 자형에 없어요. 직접 그린 기준 그림을 준비해 ‘현재 그림을 유지해서 보정’해 주세요.")?;
-    let mut face =
-        ttf_parser::Face::parse(bytes, 0).map_err(|e| format!("내장 글꼴 오류: {e:?}"))?;
+    check(supports(bytes),tr("이 문자는 내장 자형에 없어요. 직접 그린 기준 그림을 준비해 ‘현재 그림을 유지해서 보정’해 주세요."))?;
+    let mut face = ttf_parser::Face::parse(bytes, 0)
+        .map_err(|e| tf("내장 글꼴 오류: {0}", &[format!("{:?}", e)]))?;
     face.set_variation(ttf_parser::Tag::from_bytes(b"wght"), style.weight as f32);
-    let mut hb = rustybuzz::Face::from_slice(bytes, 0).ok_or("내장 글꼴을 읽지 못했어요.")?;
+    let mut hb = rustybuzz::Face::from_slice(bytes, 0).ok_or(tr("내장 글꼴을 읽지 못했어요."))?;
     hb.set_variations(&[rustybuzz::Variation {
         tag: ttf_parser::Tag::from_bytes(b"wght"),
         value: style.weight as f32,
@@ -384,7 +389,7 @@ fn outline(glyph: &Glyph, style: &Style) -> Result<Outlined, String> {
     let shaped = rustybuzz::shape(&hb, &[], buffer);
     check(
         shaped.glyph_infos().iter().all(|g| g.glyph_id != 0),
-        "일부 문자의 정확한 자형을 찾지 못했어요.",
+        tr("일부 문자의 정확한 자형을 찾지 못했어요."),
     )?;
     let unit = EM / face.units_per_em() as f64;
     // A typeface-wide scale keeps H/x/g and punctuation in the same coordinate system.
@@ -432,7 +437,7 @@ fn outline(glyph: &Glyph, style: &Style) -> Result<Outlined, String> {
         }
         pen += position.x_advance as f64 * unit + style.tracking as f64;
     }
-    check(!contours.is_empty(), "그릴 수 있는 글자 윤곽이 없어요.")?;
+    check(!contours.is_empty(), tr("그릴 수 있는 글자 윤곽이 없어요."))?;
     let mut final_contours = vec![];
     for contour in contours {
         let points: Vec<_> = contour

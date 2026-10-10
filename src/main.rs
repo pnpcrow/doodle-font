@@ -3,12 +3,10 @@ mod app;
 #[cfg(windows)]
 mod native_window;
 fn main() -> eframe::Result {
-    let icon = image::load_from_memory(include_bytes!("../assets/icon.ico"))
-        .expect("app icon")
-        .to_rgba8();
+    let icon = doodle_core::brand::rgba();
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("두들 폰트 · Doodle Font")
+            .with_title("Doodle Font")
             .with_decorations(false)
             .with_inner_size([1480., 940.])
             .with_icon(eframe::egui::IconData {

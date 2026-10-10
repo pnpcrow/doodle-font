@@ -1,4 +1,5 @@
 //! The editor, AI reference image, prompts and typography engine share one coordinate space.
+use crate::i18n::text as tr;
 use crate::model::{Artwork, Glyph};
 use serde_json::{json, Value};
 
@@ -26,7 +27,7 @@ pub fn vertical_guides(advance: f64) -> [f64; 3] {
 pub fn balanced_offset(advance: f64, ink_left: f64, ink_right: f64) -> Result<f64, String> {
     let [left, right] = horizontal_bounds(advance);
     if ink_right - ink_left > right - left + 0.01 {
-        return Err("글자의 자연스러운 비율을 유지하면 설정한 폭과 여백을 넘어요. 더 좁은 스타일을 요청하거나 글자 폭 설정을 확인해 주세요.".into());
+        return Err(tr("글자의 자연스러운 비율을 유지하면 설정한 폭과 여백을 넘어요. 더 좁은 스타일을 요청하거나 글자 폭 설정을 확인해 주세요.").into());
     }
     Ok((left + right - ink_left - ink_right) / 2.)
 }
@@ -59,10 +60,10 @@ pub fn context(glyph: &Glyph) -> Value {
 
 pub fn guides() -> [(f64, &'static str, [u8; 3]); 4] {
     [
-        (CAP_TOP, "대문자 높이", [194, 202, 185]),
-        (MIDLINE, "중심선", [216, 219, 210]),
-        (BASELINE, "기준선", [219, 151, 127]),
-        (DESCENT_BOTTOM, "하강 한계", [145, 166, 190]),
+        (CAP_TOP, tr("대문자 높이"), [194, 202, 185]),
+        (MIDLINE, tr("중심선"), [216, 219, 210]),
+        (BASELINE, tr("기준선"), [219, 151, 127]),
+        (DESCENT_BOTTOM, tr("하강 한계"), [145, 166, 190]),
     ]
 }
 
@@ -113,6 +114,17 @@ fn preserve_position(prompt: &str) -> bool {
         "center",
         "move",
         "shift",
+        "維持",
+        "そのまま",
+        "補正",
+        "現在",
+        "既存",
+        "位置",
+        "揃え",
+        "中央",
+        "左寄せ",
+        "右寄せ",
+        "移動",
     ]
     .iter()
     .any(|word| p.contains(word))
@@ -129,13 +141,13 @@ pub fn place_api_candidate(glyph: &Glyph, prompt: &str, art: &mut Artwork) -> Re
     };
     let dx = balanced_offset(glyph.artwork.advance, bounds[0], bounds[2])?;
     if glyph.text.chars().any(|c| "gjpqy".contains(c)) && bounds[3] < BASELINE + 40. {
-        return Err("AI 그림에서 기준선 아래로 내려오는 획이 확인되지 않아요. g·j·p·q·y의 하강 획을 포함해 다시 만들어 주세요.".into());
+        return Err(tr("AI 그림에서 기준선 아래로 내려오는 획이 확인되지 않아요. g·j·p·q·y의 하강 획을 포함해 다시 만들어 주세요.").into());
     }
     if bounds[1] < TOP || bounds[3] > DESCENT_BOTTOM {
-        return Err(
-            "AI 그림이 작업 영역의 위아래를 벗어났어요. 가이드라인 안에 맞춰 다시 만들어 주세요."
-                .into(),
-        );
+        return Err(tr(
+            "AI 그림이 작업 영역의 위아래를 벗어났어요. 가이드라인 안에 맞춰 다시 만들어 주세요.",
+        )
+        .into());
     }
     for shape in &mut art.shapes {
         if shape.kind == "path" {

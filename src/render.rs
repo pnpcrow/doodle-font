@@ -1,4 +1,5 @@
 //! Render and shape actual font bytes, including our COLR v0 and sbix exports.
+use crate::i18n::{format as tf, text as tr};
 use tiny_skia::{PathBuilder, Pixmap, Transform};
 use ttf_parser::{colr, GlyphId, OutlineBuilder};
 struct Path(PathBuilder);
@@ -59,8 +60,9 @@ impl<'b> colr::Painter<'b> for Painter<'_, 'b, '_> {
 }
 pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::RgbaImage, String> {
     use colr::Painter as _;
-    let face = ttf_parser::Face::parse(bytes, 0).map_err(|e| format!("폰트 읽기 오류: {e:?}"))?;
-    let hb = rustybuzz::Face::from_slice(bytes, 0).ok_or("폰트 셰이핑 오류")?;
+    let face = ttf_parser::Face::parse(bytes, 0)
+        .map_err(|e| tf("폰트 읽기 오류: {0}", &[format!("{:?}", e)]))?;
+    let hb = rustybuzz::Face::from_slice(bytes, 0).ok_or(tr("폰트 셰이핑 오류"))?;
     let mut b = rustybuzz::UnicodeBuffer::new();
     b.push_str(text);
     b.guess_segment_properties();
@@ -83,7 +85,7 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
         .ceil()
         .clamp(1., 4096.) as u32;
     let height = (px * 1.5).ceil() as u32;
-    let mut pix = Pixmap::new(width, height).ok_or("미리보기 크기가 너무 커요.")?;
+    let mut pix = Pixmap::new(width, height).ok_or(tr("미리보기 크기가 너무 커요."))?;
     let baseline = px * 1.05;
     let mut x = 0.;
     for (info, pos) in shaped.glyph_infos().iter().zip(shaped.glyph_positions()) {
@@ -103,7 +105,8 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
                     ((decoded.height() as f32 * ratio).round() as u32).max(1),
                     image::imageops::FilterType::Triangle,
                 );
-                let mut layer = Pixmap::new(im.width(), im.height()).ok_or("이미지 크기 오류")?;
+                let mut layer =
+                    Pixmap::new(im.width(), im.height()).ok_or(tr("이미지 크기 오류"))?;
                 for (d, p) in layer
                     .data_mut()
                     .as_chunks_mut::<4>()
@@ -160,5 +163,5 @@ pub fn text(bytes: &[u8], text: &str, locale: &str, px: f32) -> Result<image::Rg
             }
         }
     }
-    image::RgbaImage::from_raw(width, height, rgba).ok_or("미리보기 생성 오류".into())
+    image::RgbaImage::from_raw(width, height, rgba).ok_or(tr("미리보기 생성 오류").into())
 }

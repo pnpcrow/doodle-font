@@ -1,3 +1,4 @@
+use crate::i18n::{format as tf, text as tr};
 // Native OpenType compiler. No system-font outlines or external executables.
 use crate::model::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -69,7 +70,7 @@ fn coverage(ids: &[u16]) -> B {
 }
 fn offset(v: usize) -> Result<u16, String> {
     u16::try_from(v)
-        .map_err(|_| "글리프 치환 규칙이 너무 많아요. 문자 집합별로 분할해 주세요.".into())
+        .map_err(|_| tr("글리프 치환 규칙이 너무 많아요. 문자 집합별로 분할해 주세요.").into())
 }
 fn ellipse(x: f64, y: f64, w: f64, h: f64, n: usize) -> Vec<[f64; 2]> {
     (0..n)
@@ -83,9 +84,9 @@ pub fn decode_image(src: &str) -> Result<image::RgbaImage, String> {
     let bytes = STANDARD
         .decode(
             src.strip_prefix("data:image/png;base64,")
-                .ok_or("PNG 원본이 아니에요.")?,
+                .ok_or(tr("PNG 원본이 아니에요."))?,
         )
-        .map_err(|_| "이미지 인코딩 오류")?;
+        .map_err(|_| tr("이미지 인코딩 오류"))?;
     let mut reader =
         image::ImageReader::with_format(std::io::Cursor::new(bytes), image::ImageFormat::Png);
     let mut limits = image::Limits::default();
@@ -96,7 +97,7 @@ pub fn decode_image(src: &str) -> Result<image::RgbaImage, String> {
     reader
         .decode()
         .map(|im| im.to_rgba8())
-        .map_err(|_| "4096 × 4096 이하 PNG를 사용해 주세요.".into())
+        .map_err(|_| tr("4096 × 4096 이하 PNG를 사용해 주세요.").into())
 }
 pub fn polygons(s: &Shape) -> Result<Vec<Vec<[f64; 2]>>, String> {
     if s.kind == "outline" {
@@ -220,7 +221,7 @@ fn outline(shapes: &[&Shape], cff_width: Option<u16>) -> Result<Outline, String>
     let count: usize = contours.iter().map(Vec::len).sum();
     check(
         count < 65000 && contours.len() < 32000,
-        "윤곽선이 너무 복잡해요. 선 보정이나 레이어 단순화를 적용해 주세요.",
+        tr("윤곽선이 너무 복잡해요. 선 보정이나 레이어 단순화를 적용해 주세요."),
     )?;
     if count == 0 {
         return Ok(Outline {
@@ -255,7 +256,7 @@ fn outline(shapes: &[&Shape], cff_width: Option<u16>) -> Result<Outline, String>
         let data = formats::charstring(&pts, &lengths, width)?;
         check(
             data.len() <= 65535,
-            "OTF 윤곽선이 너무 복잡해요. 레이어를 단순화하거나 TTF·WOFF 형식을 선택해 주세요.",
+            tr("OTF 윤곽선이 너무 복잡해요. 레이어를 단순화하거나 TTF·WOFF 형식을 선택해 주세요."),
         )?;
         return Ok(Outline {
             data,
@@ -294,7 +295,7 @@ fn outline(shapes: &[&Shape], cff_width: Option<u16>) -> Result<Outline, String>
     })
 }
 pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
-    let mut pix = tiny_skia::Pixmap::new(size, size).ok_or("이미지 크기 오류")?;
+    let mut pix = tiny_skia::Pixmap::new(size, size).ok_or(tr("이미지 크기 오류"))?;
     let scale = size as f32 / 1000.;
     for s in art.shapes.iter().filter(|s| s.visible && s.opacity > 0.) {
         if s.kind == "image" {
@@ -306,7 +307,7 @@ pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
                 image::imageops::FilterType::Triangle,
             );
             let mut overlay = tiny_skia::Pixmap::new(resized.width(), resized.height())
-                .ok_or("이미지 크기 오류")?;
+                .ok_or(tr("이미지 크기 오류"))?;
             for (d, p) in overlay
                 .data_mut()
                 .as_chunks_mut::<4>()
@@ -375,7 +376,7 @@ pub fn raster(art: &Artwork, size: u32) -> Result<image::RgbaImage, String> {
             }
         }
     }
-    image::RgbaImage::from_raw(size, size, rgba).ok_or("이미지 생성 오류".into())
+    image::RgbaImage::from_raw(size, size, rgba).ok_or(tr("이미지 생성 오류").into())
 }
 fn color(s: &Shape) -> [u8; 4] {
     [
@@ -606,7 +607,7 @@ fn compile_format(
     let cff = format == "otf";
     check(
         ["mono", "color", "bitmap"].contains(&mode),
-        "출력 형식을 확인해 주세요.",
+        tr("출력 형식을 확인해 주세요."),
     )?;
     let mut warnings = vec![];
     let bitmap = mode == "bitmap"
@@ -615,7 +616,7 @@ fn compile_format(
                 .iter()
                 .any(|g| shapes(g).iter().any(|s| s.kind == "image")));
     if bitmap {
-        warnings.push("sbix 비트맵 출력: 글리프 그림은 1000 × 1000 작업 영역으로 잘립니다. 외부 앱의 컬러 폰트 지원을 확인하세요.".into())
+        warnings.push(tr("sbix 비트맵 출력: 글리프 그림은 1000 × 1000 작업 영역으로 잘립니다. 외부 앱의 컬러 폰트 지원을 확인하세요.").into())
     }
     let mode = if bitmap { "bitmap" } else { mode };
     let mut outlines = vec![outline(&[], cff.then_some(1000))?];
@@ -635,7 +636,7 @@ fn compile_format(
         let gid = outlines.len();
         check(
             gid < 65535,
-            "글리프 수가 65,535개를 넘어요. 분할 출력해 주세요.",
+            tr("글리프 수가 65,535개를 넘어요. 분할 출력해 주세요."),
         )?;
         let gid = gid as u16;
         let ss = shapes(g);
@@ -650,7 +651,7 @@ fn compile_format(
             for s in ss {
                 check(
                     outlines.len() < 65535 && layers.len() < 65535,
-                    "컬러 레이어가 너무 많아요. 분할 출력해 주세요.",
+                    tr("컬러 레이어가 너무 많아요. 분할 출력해 주세요."),
                 )?;
                 let c = color(s);
                 let idx = colors.iter().position(|v| v == &c).unwrap_or_else(|| {
@@ -691,7 +692,7 @@ fn compile_format(
             if let std::collections::btree_map::Entry::Vacant(e) = map.entry(cp) {
                 check(
                     outlines.len() < 65535,
-                    "입력 부품까지 포함하면 65,535개를 넘어요.",
+                    tr("입력 부품까지 포함하면 65,535개를 넘어요."),
                 )?;
                 e.insert(outlines.len() as u16);
                 outlines.push(outline(&[], cff.then_some(0))?);
@@ -703,9 +704,14 @@ fn compile_format(
         }
     }
     if !missing.is_empty() {
-        warnings.push(format!(
-            "문자열 치환용 빈 입력 글리프: {}. 단독 표시가 필요하면 각 문자도 작성하세요.",
-            missing.into_iter().take(20).collect::<Vec<_>>().join(", ")
+        warnings.push(tf(
+            "문자열 치환용 빈 입력 글리프: {0}. 단독 표시가 필요하면 각 문자도 작성하세요.",
+            &[missing
+                .into_iter()
+                .take(20)
+                .collect::<Vec<_>>()
+                .join(", ")
+                .to_string()],
         ))
     }
     if map.keys().all(|cp| *cp >= 0xffff) {
@@ -978,7 +984,8 @@ fn compile_format(
     }
     let tags = tables.keys().map(|s| s.to_string()).collect();
     let bytes = sfnt(tables, cff);
-    ttf_parser::Face::parse(&bytes, 0).map_err(|e| format!("출력 폰트 검증 실패: {e:?}"))?;
+    ttf_parser::Face::parse(&bytes, 0)
+        .map_err(|e| tf("출력 폰트 검증 실패: {0}", &[format!("{:?}", e)]))?;
     #[cfg(windows)]
     if matches!(format, "ttf" | "otf") {
         windows::validate(&bytes)?;
@@ -1009,7 +1016,7 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
     let format = options.format.as_deref().unwrap_or("ttf");
     check(
         ["ttf", "otf", "woff", "woff2"].contains(&format),
-        "지원하지 않는 폰트 파일 포맷이에요.",
+        tr("지원하지 않는 폰트 파일 포맷이에요."),
     )?;
     let locale = options.locale.as_deref().unwrap_or("combined");
     let group = options.group.as_deref().unwrap_or("all");
@@ -1035,7 +1042,7 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
     }
     check(
         !selected.is_empty(),
-        "출력할 작성 글리프가 없어요. 글자를 그리거나 빈칸으로 지정해 주세요.",
+        tr("출력할 작성 글리프가 없어요. 글자를 그리거나 빈칸으로 지정해 주세요."),
     )?;
     for g in &selected {
         if g.template
@@ -1043,7 +1050,10 @@ pub fn export(p: &Project, options: &ExportOptions) -> Result<ExportResult, Stri
             .chain(&g.sources)
             .any(|t| !t.permissions.embed)
         {
-            return Err(format!("'{}' 템플릿에 폰트 포함 권한이 없어요.", g.name));
+            return Err(tf(
+                "'{0}' 템플릿에 폰트 포함 권한이 없어요.",
+                std::slice::from_ref(&g.name),
+            ));
         }
     }
     let mut groups: BTreeMap<&str, Vec<&Glyph>> = BTreeMap::new();

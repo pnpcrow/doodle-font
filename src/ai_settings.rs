@@ -1,4 +1,5 @@
 //! User-scoped, encrypted connection settings. Never part of a font project.
+use crate::i18n::text as tr;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, io::Write, path::Path};
 
@@ -79,36 +80,39 @@ impl Connections {
     }
     pub fn load(path: &Path) -> Result<Self, String> {
         if std::fs::metadata(path).is_ok_and(|m| m.len() > LIMIT as u64) {
-            return Err("AI 연결 설정 파일이 너무 커요.".into());
+            return Err(tr("AI 연결 설정 파일이 너무 커요.").into());
         }
         let bytes = match std::fs::read(path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
             Err(_) => {
-                return Err("AI 연결 설정을 읽지 못했어요. 파일 접근 권한을 확인해 주세요.".into())
+                return Err(
+                    tr("AI 연결 설정을 읽지 못했어요. 파일 접근 권한을 확인해 주세요.").into(),
+                )
             }
         };
         if bytes.len() > LIMIT || !bytes.starts_with(HEADER) {
-            return Err("AI 연결 설정 파일이 손상됐어요. 기존 파일은 보존합니다.".into());
+            return Err(tr("AI 연결 설정 파일이 손상됐어요. 기존 파일은 보존합니다.").into());
         }
         let plaintext = protect(&bytes[HEADER.len()..], false)?;
         // Never include a serde error: it may quote a credential from a bad file.
-        let settings: Self = serde_json::from_slice(&plaintext)
-            .map_err(|_| "AI 연결 설정 형식이 맞지 않아요. 기존 파일은 보존합니다.".to_string())?;
+        let settings: Self = serde_json::from_slice(&plaintext).map_err(|_| {
+            tr("AI 연결 설정 형식이 맞지 않아요. 기존 파일은 보존합니다.").to_string()
+        })?;
         if !["off", "local", "openai", "anthropic"].contains(&settings.provider.as_str()) {
-            return Err("저장된 AI 제공자를 확인할 수 없어요.".into());
+            return Err(tr("저장된 AI 제공자를 확인할 수 없어요.").into());
         }
         Ok(settings)
     }
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let plaintext = serde_json::to_vec(self)
-            .map_err(|_| "AI 연결 설정을 준비하지 못했어요.".to_string())?;
+            .map_err(|_| tr("AI 연결 설정을 준비하지 못했어요.").to_string())?;
         if plaintext.len() > LIMIT / 2 {
-            return Err("AI 연결 설정이 너무 커요.".into());
+            return Err(tr("AI 연결 설정이 너무 커요.").into());
         }
         let encrypted = protect(&plaintext, true)?;
-        let parent = path.parent().ok_or("AI 설정 폴더를 찾지 못했어요.")?;
-        std::fs::create_dir_all(parent).map_err(|_| "AI 설정 폴더를 만들지 못했어요.")?;
+        let parent = path.parent().ok_or(tr("AI 설정 폴더를 찾지 못했어요."))?;
+        std::fs::create_dir_all(parent).map_err(|_| tr("AI 설정 폴더를 만들지 못했어요."))?;
         // The only on-disk temporary data is encrypted too. Failed writes preserve the last save.
         let pending = path.with_extension(format!("{}.pending", uuid::Uuid::new_v4()));
         let result = (|| -> std::io::Result<()> {
@@ -126,7 +130,7 @@ impl Connections {
             let _ = std::fs::remove_file(&pending);
         }
         result.map_err(|_| {
-            "AI 연결 설정을 저장하지 못했어요. 폴더 권한을 확인하고 다시 저장해 주세요.".into()
+            tr("AI 연결 설정을 저장하지 못했어요. 폴더 권한을 확인하고 다시 저장해 주세요.").into()
         })
     }
 }
@@ -140,7 +144,10 @@ fn protect(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
         },
     };
     let input = CRYPT_INTEGER_BLOB {
-        cbData: bytes.len().try_into().map_err(|_| "AI 설정이 너무 커요.")?,
+        cbData: bytes
+            .len()
+            .try_into()
+            .map_err(|_| tr("AI 설정이 너무 커요."))?,
         pbData: bytes.as_ptr().cast_mut(),
     };
     let mut output = CRYPT_INTEGER_BLOB {
@@ -173,7 +180,7 @@ fn protect(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
         }
     };
     if ok == 0 {
-        return Err(if encrypt { "Windows가 API 키를 암호화하지 못했어요. 키는 이번 실행에서만 사용됩니다." } else { "저장된 AI 연결을 복원하지 못했어요. 저장한 Windows 계정에서 실행하거나 연결 정보를 다시 입력해 주세요." }.into());
+        return Err(if encrypt { tr("Windows가 API 키를 암호화하지 못했어요. 키는 이번 실행에서만 사용됩니다.") } else { tr("저장된 AI 연결을 복원하지 못했어요. 저장한 Windows 계정에서 실행하거나 연결 정보를 다시 입력해 주세요.") }.into());
     }
     // SAFETY: a successful call owns this cbData-sized buffer; release it exactly once.
     let result = unsafe {
@@ -189,7 +196,7 @@ fn protect(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
 }
 #[cfg(not(windows))]
 fn protect(_: &[u8], _: bool) -> Result<Vec<u8>, String> {
-    Err("API 키의 암호화 저장은 Windows에서 사용할 수 있어요.".into())
+    Err(tr("API 키의 암호화 저장은 Windows에서 사용할 수 있어요.").into())
 }
 
 #[cfg(all(test, windows))]

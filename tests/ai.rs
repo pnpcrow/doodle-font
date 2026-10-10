@@ -155,6 +155,35 @@ fn canvas_snapshot_preserves_color_on_white() {
 }
 
 #[test]
+fn consultation_requests_display_language_without_rewriting_user_input_or_reply() {
+    use doodle_core::i18n::{self, Language};
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for language in [Language::English, Language::Japanese] {
+        i18n::set_language(language);
+        for provider in ["openai", "anthropic"] {
+            let original_reply = "provider reply · 한국어 · 日本語 {0}";
+            let (url, rx) = mock(provider, original_reply);
+            let user_input = "한국어로 쓴 원래 요청 {1}";
+            let result = runtime
+                .block_on(ai::assist(json!({
+                    "glyph":new_glyph("가", "ko", "hangul", false), "prompt":user_input,
+                    "config":{"provider":provider,"endpoint":url,"model":"test","key":"test-key"},
+                    "sendReference":false
+                })))
+                .unwrap();
+            assert_eq!(result, original_reply);
+            let request = rx.recv().unwrap();
+            assert!(request.contains(&format!("Reply in {}", language.english_name())));
+            assert!(request.contains(user_input));
+            assert!(request.contains("U+AC00"));
+        }
+    }
+}
+
+#[test]
 fn both_providers_receive_natural_size_guidance_and_balance_fresh_candidates() {
     for provider in ["openai", "anthropic"] {
         let answer = r#"{"advance":1000,"shapes":[{"type":"path","points":[[350,400],[550,800],[460,920]],"stroke":20}]}"#;
