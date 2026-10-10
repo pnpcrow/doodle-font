@@ -29,6 +29,93 @@ fn checksum(b: &[u8]) -> u32 {
         sum.wrapping_add(u32::from_be_bytes(word))
     })
 }
+
+#[test]
+fn desktop_cmaps_agree_for_bmp_supplementary_and_variation_characters() {
+    let mut p = new_project();
+    let mut hangul = new_glyph("한", "ko", "hangul", false);
+    hangul.artwork = p.glyphs[0].artwork.clone();
+    hangul.status = "edited".into();
+    p.glyphs.push(hangul);
+    for format in ["ttf", "otf"] {
+        let (bytes, _) = export(&p, format, "color");
+        let face = ttf_parser::Face::parse(&bytes, 0).unwrap();
+        let subtables = face.tables().cmap.unwrap().subtables;
+        let bmp = subtables
+            .into_iter()
+            .find(|s| s.platform_id == ttf_parser::PlatformId::Windows && s.encoding_id == 1)
+            .unwrap();
+        let full = subtables
+            .into_iter()
+            .find(|s| s.platform_id == ttf_parser::PlatformId::Windows && s.encoding_id == 10)
+            .unwrap();
+        assert!(matches!(
+            bmp.format,
+            ttf_parser::cmap::Format::SegmentMappingToDeltaValues(_)
+        ));
+        assert!(matches!(
+            full.format,
+            ttf_parser::cmap::Format::SegmentedCoverage(_)
+        ));
+        for cp in 0..=0xffff {
+            assert_eq!(
+                bmp.glyph_index(cp).map_or(0, |g| g.0),
+                full.glyph_index(cp).map_or(0, |g| g.0),
+                "{format}: U+{cp:04X}"
+            );
+        }
+        for c in ['A', '한', '😊'] {
+            assert!(full.glyph_index(c as u32).is_some());
+        }
+        assert!(face.glyph_variation_index('❤', '\u{fe0f}').is_some());
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_loads_saved_ttf_and_otf_including_blank_and_supplementary_only_fonts() {
+    use windows_sys::Win32::Graphics::Gdi::{
+        AddFontResourceExW, RemoveFontResourceExW, FR_PRIVATE,
+    };
+    let mut fixtures = vec![new_project()];
+    for text in [" ", "😊"] {
+        let mut p = new_project();
+        p.glyphs.clear();
+        let mut g = new_glyph(text, "default", "custom", false);
+        g.status = "blank".into();
+        p.glyphs.push(g);
+        fixtures.push(p);
+    }
+    for (i, p) in fixtures.iter().enumerate() {
+        for format in ["ttf", "otf"] {
+            for mode in ["mono", "color", "bitmap"] {
+                // Export also exercises the process-private Windows memory font loader.
+                let (bytes, _) = export(p, format, mode);
+                let path = std::env::temp_dir().join(format!("두들-글꼴-검증-{}.{format}", uid()));
+                std::fs::write(&path, bytes).unwrap();
+                let wide: Vec<u16> = path
+                    .as_os_str()
+                    .to_string_lossy()
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
+                // Only this test process can see the temporary font. Never install it globally.
+                let loaded =
+                    unsafe { AddFontResourceExW(wide.as_ptr(), FR_PRIVATE, std::ptr::null()) };
+                if loaded > 0 {
+                    assert_ne!(
+                        unsafe {
+                            RemoveFontResourceExW(wide.as_ptr(), FR_PRIVATE, std::ptr::null())
+                        },
+                        0
+                    );
+                }
+                std::fs::remove_file(path).unwrap();
+                assert!(loaded > 0, "Windows rejected fixture {i}/{format}/{mode}");
+            }
+        }
+    }
+}
 fn base128(b: &[u8], offset: &mut usize) -> usize {
     let mut n = 0usize;
     for _ in 0..5 {

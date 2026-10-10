@@ -3,7 +3,10 @@ use crate::model::*;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
+mod cmap;
 mod formats;
+#[cfg(windows)]
+mod windows;
 #[derive(Default, Deserialize)]
 pub struct ExportOptions {
     pub format: Option<String>,
@@ -382,57 +385,6 @@ fn color(s: &Shape) -> [u8; 4] {
         (s.opacity * 255.).round() as u8,
     ]
 }
-fn cmap_table(map: &BTreeMap<u32, u16>, uvs: &BTreeMap<u32, Vec<(u32, u16)>>) -> B {
-    let mut c12 = B::default();
-    c12.u16(12);
-    c12.u16(0);
-    c12.u32((16 + map.len() * 12) as u32);
-    c12.u32(0);
-    c12.u32(map.len() as u32);
-    for (cp, g) in map {
-        c12.u32(*cp);
-        c12.u32(*cp);
-        c12.u32(*g as u32)
-    }
-    let mut c14 = B::default();
-    if !uvs.is_empty() {
-        c14.u16(14);
-        c14.u32(0);
-        c14.u32(uvs.len() as u32);
-        let mut data = B::default();
-        for (v, items) in uvs {
-            c14.bytes(&v.to_be_bytes()[1..]);
-            c14.u32(0);
-            c14.u32((10 + uvs.len() * 11 + data.0.len()) as u32);
-            data.u32(items.len() as u32);
-            for (cp, g) in items {
-                data.bytes(&cp.to_be_bytes()[1..]);
-                data.u16(*g)
-            }
-        }
-        c14.bytes(&data.0);
-        let len = c14.0.len();
-        c14.put(2, len as u32);
-    }
-    let n = if uvs.is_empty() { 2 } else { 3 };
-    let mut b = B::default();
-    b.u16(0);
-    b.u16(n);
-    b.u16(0);
-    b.u16(4);
-    b.u32((4 + n as usize * 8) as u32);
-    if !uvs.is_empty() {
-        b.u16(0);
-        b.u16(5);
-        b.u32((4 + n as usize * 8 + c12.0.len()) as u32)
-    }
-    b.u16(3);
-    b.u16(10);
-    b.u32((4 + n as usize * 8) as u32);
-    b.bytes(&c12.0);
-    b.bytes(&c14.0);
-    b
-}
 fn lookup(kind: u16, subs: Vec<B>) -> Result<B, String> {
     let mut b = B::default();
     b.u16(kind);
@@ -667,6 +619,11 @@ fn compile_format(
     }
     let mode = if bitmap { "bitmap" } else { mode };
     let mut outlines = vec![outline(&[], cff.then_some(1000))?];
+    if !cff {
+        // Keep .notdef empty, but encode its header and zero instruction length.
+        // Windows rejects a zero-length glyf table when every authored glyph is blank.
+        outlines[0].data = vec![0; 12];
+    }
     let mut advances = vec![1000u16];
     let mut map = BTreeMap::new();
     let mut texts: BTreeMap<&str, Vec<(&Glyph, u16)>> = BTreeMap::new();
@@ -750,6 +707,11 @@ fn compile_format(
             "문자열 치환용 빈 입력 글리프: {}. 단독 표시가 필요하면 각 문자도 작성하세요.",
             missing.into_iter().take(20).collect::<Vec<_>>().join(", ")
         ))
+    }
+    if map.keys().all(|cp| *cp >= 0xffff) {
+        // Windows' CFF loader requires a non-terminal BMP segment even for an
+        // emoji-only font. NUL -> .notdef adds no printable glyph or glyph ID.
+        map.insert(0, 0);
     }
     let mut uvs: BTreeMap<u32, Vec<(u32, u16)>> = BTreeMap::new();
     let mut ligatures = vec![];
@@ -957,7 +919,7 @@ fn compile_format(
     post.u32(0x30000);
     post.zeros(28);
     tables.insert("post", post);
-    tables.insert("cmap", cmap_table(&map, &uvs));
+    tables.insert("cmap", cmap::table(&map, &uvs)?);
     if let Some(gsub) = gsub(&ligatures, &locals)? {
         tables.insert("GSUB", gsub);
     }
@@ -1017,6 +979,10 @@ fn compile_format(
     let tags = tables.keys().map(|s| s.to_string()).collect();
     let bytes = sfnt(tables, cff);
     ttf_parser::Face::parse(&bytes, 0).map_err(|e| format!("출력 폰트 검증 실패: {e:?}"))?;
+    #[cfg(windows)]
+    if matches!(format, "ttf" | "otf") {
+        windows::validate(&bytes)?;
+    }
     let bytes = match format {
         "woff" => formats::woff(&bytes)?,
         "woff2" => formats::woff2(&bytes)?,

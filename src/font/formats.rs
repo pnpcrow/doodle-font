@@ -76,6 +76,21 @@ fn index(items: &[&[u8]]) -> Result<B, String> {
 }
 
 fn dict(b: &mut B, values: &[i32], op: &[u8]) {
+    for &v in values {
+        if let Ok(v) = i16::try_from(v) {
+            number(b, v);
+        } else {
+            b.0.push(29);
+            b.bytes(&v.to_be_bytes());
+        }
+    }
+    b.bytes(op);
+}
+
+// Offset operands retain a fixed length so relocating the dictionaries is stable.
+// Ordinary values use compact integers: Windows rejects CharstringType=2 encoded
+// as a long (29) even though permissive readers accept the same numeric value.
+fn dict_offsets(b: &mut B, values: &[i32], op: &[u8]) {
     for v in values {
         b.0.push(29);
         b.bytes(&v.to_be_bytes());
@@ -108,7 +123,7 @@ pub(super) fn cff(name: &str, outlines: &[Outline], bounds: [i16; 4]) -> Result<
     let font_dict = |offset: usize| -> Result<B, String> {
         let mut d = B::default();
         dict(&mut d, &[393], &[12, 38]); // FontName
-        dict(&mut d, &[private.len() as i32, size(offset)? as i32], &[18]);
+        dict_offsets(&mut d, &[private.len() as i32, size(offset)? as i32], &[18]);
         index(&[&d.0])
     };
     let top_dict = |charset: usize, chars: usize, fd: usize, select: usize| -> Result<B, String> {
@@ -117,10 +132,10 @@ pub(super) fn cff(name: &str, outlines: &[Outline], bounds: [i16; 4]) -> Result<
         dict(&mut d, &[n as i32], &[12, 34]);
         dict(&mut d, &[2], &[12, 6]); // CharstringType
         dict(&mut d, &bounds.map(i32::from), &[5]);
-        dict(&mut d, &[size(charset)? as i32], &[15]);
-        dict(&mut d, &[size(chars)? as i32], &[17]);
-        dict(&mut d, &[size(fd)? as i32], &[12, 36]);
-        dict(&mut d, &[size(select)? as i32], &[12, 37]);
+        dict_offsets(&mut d, &[size(charset)? as i32], &[15]);
+        dict_offsets(&mut d, &[size(chars)? as i32], &[17]);
+        dict_offsets(&mut d, &[size(fd)? as i32], &[12, 36]);
+        dict_offsets(&mut d, &[size(select)? as i32], &[12, 37]);
         index(&[&d.0])
     };
     let charset_off = 4 + names.0.len() + top_dict(0, 0, 0, 0)?.0.len() + strings.0.len() + 2;
