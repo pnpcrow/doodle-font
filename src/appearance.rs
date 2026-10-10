@@ -27,12 +27,14 @@ impl Theme {
         }
     }
 }
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Preferences {
     pub theme: Theme,
     pub reduce_motion: bool,
     pub companion_renderer: crate::companion::Renderer,
+    /// Relative position within the available travel area; None follows the prompt.
+    pub companion_position: Option<[f32; 2]>,
 }
 impl Preferences {
     pub fn load(path: &Path) -> Self {

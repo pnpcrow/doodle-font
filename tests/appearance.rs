@@ -13,6 +13,7 @@ fn theme_preferences_survive_restart_and_system_mode_tracks_os_changes() {
             theme,
             reduce_motion: true,
             companion_renderer: Renderer::Vector,
+            companion_position: Some([0.25, 0.75]),
         };
         prefs.save(&path).unwrap();
         assert_eq!(Preferences::load(&path), prefs);
@@ -47,11 +48,44 @@ fn older_preferences_adopt_vector_without_losing_theme_or_explicit_renderer_choi
     assert_eq!(old.theme, Theme::Dark);
     assert!(old.reduce_motion);
     assert_eq!(old.companion_renderer, Renderer::Vector);
+    assert_eq!(old.companion_position, None);
     let explicit: Preferences = serde_json::from_str(
         r#"{"theme":"dark","reduce_motion":true,"companion_renderer":"image"}"#,
     )
     .unwrap();
     assert_eq!(explicit.companion_renderer, Renderer::Image);
+}
+
+#[test]
+fn saved_companion_placement_survives_resizing_and_clamps_invalid_coordinates() {
+    use doodle_core::companion::placement;
+    let large = placement::bounds(egui::Rect::from_min_size(
+        Pos2::ZERO,
+        Vec2::new(1920., 1080.),
+    ));
+    let original = placement::resolve(large, 192., Pos2::ZERO, Some([0.25, 0.75]));
+    let saved = placement::remember(large, original);
+    for (width, height, size) in [
+        (1120., 760., 160.),
+        (1480., 940., 192.),
+        (1920., 1080., 192.),
+    ] {
+        let bounds = placement::bounds(egui::Rect::from_min_size(
+            Pos2::ZERO,
+            Vec2::new(width, height),
+        ));
+        let restored = placement::resolve(bounds, size, bounds.min, Some(saved));
+        assert!(bounds.contains_rect(restored));
+        assert!((placement::remember(bounds, restored)[0] - 0.25).abs() < 0.0001);
+        assert!((placement::remember(bounds, restored)[1] - 0.75).abs() < 0.0001);
+        let clipped = placement::resolve(bounds, size, bounds.min, Some([-50., 50.]));
+        assert_eq!(clipped.left(), bounds.left());
+        assert_eq!(clipped.bottom(), bounds.bottom());
+        for invalid in [[f32::NAN, 0.], [0., f32::INFINITY]] {
+            let fallback = placement::resolve(bounds, size, bounds.min, Some(invalid));
+            assert_eq!(fallback.min, bounds.min);
+        }
+    }
 }
 
 #[test]

@@ -1,7 +1,7 @@
 //! Native pointer/keyboard regressions for project editing and the studio layout.
 use super::*;
 
-fn click(input: &mut egui::RawInput, rect: Rect, pressed: bool, secondary: bool) {
+pub(super) fn click(input: &mut egui::RawInput, rect: Rect, pressed: bool, secondary: bool) {
     input.events.push(egui::Event::PointerMoved(rect.center()));
     input.events.push(egui::Event::PointerButton {
         pos: rect.center(),
@@ -14,7 +14,7 @@ fn click(input: &mut egui::RawInput, rect: Rect, pressed: bool, secondary: bool)
         modifiers: Default::default(),
     });
 }
-fn key(input: &mut egui::RawInput, key: egui::Key, command: bool) {
+pub(super) fn key(input: &mut egui::RawInput, key: egui::Key, command: bool) {
     input.events.push(egui::Event::Key {
         key,
         physical_key: None,
@@ -110,6 +110,16 @@ impl Studio {
         if view == "layout-companion-small" {
             self.api_provider = "local".into();
         }
+        if view.starts_with("layout-companion-drag-") {
+            self.api_provider = "local".into();
+            self.local_installed = true;
+            self.preferences.reduce_motion = true;
+            if view.ends_with("restored-small") {
+                self.preferences.companion_renderer = doodle_core::companion::Renderer::Image;
+                self.companion
+                    .set_renderer(ctx, self.preferences.companion_renderer);
+            }
+        }
         if view == "layout-window" || view.starts_with("layout-corners") {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(Vec2::new(1120., 760.)));
         }
@@ -128,6 +138,10 @@ impl Studio {
             .retain(|e| matches!(e, egui::Event::Screenshot { .. }));
         let frame = ctx.cumulative_frame_nr();
         input.time = Some(frame as f64 / 30.);
+        if view.starts_with("layout-companion-drag-") {
+            self.companion_placement_qa_input(ctx, input, view);
+            return true;
+        }
         let mut target = None;
         let mut pressed = false;
         let mut secondary = false;

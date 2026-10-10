@@ -2,6 +2,8 @@
 //! No inference runs on the render thread, at rest, or for individual frames.
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Vec2};
 use std::f32::consts::{PI, TAU};
+#[path = "companion_placement.rs"]
+pub mod placement;
 #[path = "companion_vector.rs"]
 mod vector;
 

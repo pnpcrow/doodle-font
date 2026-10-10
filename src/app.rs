@@ -15,6 +15,9 @@ use std::{
 };
 const DRAW_INK: Color32 = Color32::from_rgb(48, 51, 46);
 #[cfg(feature = "ui-qa")]
+#[path = "companion_placement_qa.rs"]
+mod companion_placement_qa;
+#[cfg(feature = "ui-qa")]
 #[path = "layout_qa.rs"]
 mod layout_qa;
 #[cfg(feature = "ui-qa")]
@@ -868,6 +871,18 @@ impl Studio {
                     Some(doodle_core::companion_compare::Comparison::new(ui.ctx()));
             }
         });
+        let reset = ui.add_enabled(
+            self.preferences.companion_position.is_some(),
+            egui::Button::new("기본 위치로 되돌리기"),
+        );
+        #[cfg(feature = "ui-qa")]
+        {
+            self.qa_settings.companion_reset = Some(reset.rect);
+        }
+        if reset.clicked() {
+            self.preferences.companion_position = None;
+            ui.close();
+        }
         self.save_preferences(ui.ctx(), old);
     }
     fn save_preferences(&mut self, ctx: &egui::Context, old: Preferences) {
@@ -876,12 +891,15 @@ impl Studio {
                 .set_renderer(ctx, self.preferences.companion_renderer);
             ctx.set_theme(self.preferences.theme.preference());
             self.palette = Palette::of(ctx);
-            if let Err(e) = self
-                .preferences
-                .save(&self.save_path.with_file_name("appearance.json"))
-            {
-                self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
-            }
+            self.store_preferences();
+        }
+    }
+    fn store_preferences(&mut self) {
+        if let Err(e) = self
+            .preferences
+            .save(&self.save_path.with_file_name("appearance.json"))
+        {
+            self.notify(format!("화면 설정을 저장하지 못했어요: {e}"));
         }
     }
     fn top(&mut self, ctx: &egui::Context) {
@@ -2869,12 +2887,15 @@ impl Studio {
             card_center_x - view.center().x + card_outer_width / 2. + gap + companion_size / 2.,
             -44.,
         );
-        let companion_rect = Rect::from_min_size(
+        let companion_bounds = doodle_core::companion::placement::bounds(view);
+        let companion_rect = doodle_core::companion::placement::resolve(
+            companion_bounds,
+            companion_size,
             Pos2::new(
                 view.center().x + companion_offset.x - companion_size / 2.,
                 view.bottom() + companion_offset.y - companion_size,
             ),
-            Vec2::splat(companion_size),
+            self.preferences.companion_position,
         );
         let area = egui::Area::new("ai-dock".into())
             .anchor(
@@ -3138,11 +3159,13 @@ impl Studio {
                 }
                 let _ = dock;
             }
-            egui::Area::new("ai-companion".into())
-                .anchor(Align2::CENTER_BOTTOM, companion_offset)
+            let area = egui::Area::new("ai-companion".into())
+                .current_pos(companion_rect.min)
+                .default_size(companion_rect.size())
+                .constrain_to(companion_bounds)
                 .order(egui::Order::Foreground)
                 .sense(Sense::click_and_drag())
-                .movable(false)
+                .movable(!ctx.input(|i| i.pointer.secondary_down()))
                 .show(ctx, |ui| {
                     let companion =
                         self.companion
@@ -3151,7 +3174,9 @@ impl Studio {
                     {
                         self.qa_dock.companion = Some(companion.rect);
                     }
-                    let companion = companion.on_hover_text("마우스 오른쪽 버튼으로 컴패니언 설정");
+                    let companion = companion
+                        .on_hover_cursor(egui::CursorIcon::Grab)
+                        .on_hover_text("드래그하여 이동 · 마우스 오른쪽 버튼으로 설정");
                     egui::Popup::context_menu(&companion)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                         .show(|ui| {
@@ -3162,6 +3187,20 @@ impl Studio {
                             }
                         });
                 });
+            if area.response.dragged_by(egui::PointerButton::Primary)
+                || area.response.drag_stopped_by(egui::PointerButton::Primary)
+            {
+                self.preferences.companion_position =
+                    Some(doodle_core::companion::placement::remember(
+                        companion_bounds,
+                        area.response.rect,
+                    ));
+                if area.response.drag_stopped_by(egui::PointerButton::Primary) {
+                    self.store_preferences();
+                } else {
+                    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+                }
+            }
         }
     }
     fn decision_options_ui(&mut self, ui: &mut egui::Ui) {
@@ -4543,6 +4582,7 @@ impl eframe::App for Studio {
                     self.local_installed = true;
                 }
                 if frame == 10 {
+                    self.qa_dock.companion_baseline = self.qa_dock.companion;
                     assert_eq!(
                         self.qa_canvas, self.qa_dock.baseline,
                         "AI availability must not resize the canvas"
@@ -5028,7 +5068,7 @@ impl eframe::App for Studio {
         if ctx.cumulative_frame_nr() == 12 {
             if let (Some(companion), Some(dock)) = (self.qa_dock.companion, self.qa_dock.dock) {
                 assert!(companion.width() >= 159. && companion.height() >= 159.);
-                if !self.ai_dock_collapsed {
+                if !self.ai_dock_collapsed && self.preferences.companion_position.is_none() {
                     assert!(
                         dock.right() + 8. <= companion.left(),
                         "companion must be beside the expanded prompt"

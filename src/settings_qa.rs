@@ -14,6 +14,8 @@ pub(super) struct State {
     pub sidebar: Option<Rect>,
     pub sidebar_toggle: Option<Rect>,
     pub companion_menu: Option<Rect>,
+    pub companion_reset: Option<Rect>,
+    pub companion_project: Option<String>,
     pub reduce_motion: Option<Rect>,
     completed: bool,
     request: Option<mpsc::Receiver<serde_json::Value>>,
