@@ -252,6 +252,100 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
             note: "현재 그림의 형태를 유지하고 획 굵기를 통일했어요.".into(),
         });
     }
+    let Outlined {
+        mut contours,
+        bytes,
+        name,
+        fallback,
+    } = outline(glyph, style)?;
+    let [lo, _, hi, _] = contour_bounds(&contours);
+    // Translation only: a narrow advance must not silently squeeze a letter.
+    let dx = glyph_layout::balanced_offset(glyph.artwork.advance, lo, hi)?;
+    for p in contours.iter_mut().flatten() {
+        p[0] += dx;
+    }
+    check(
+        contours
+            .iter()
+            .flatten()
+            .all(|p| (0.0..=DESCENT_BOTTOM + 0.01).contains(&p[1])),
+        "글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요.",
+    )?;
+    let mut shape = new_shape("outline");
+    shape.name = format!("{} · 글자 형태", glyph.text);
+    shape.x = 0.;
+    shape.y = 0.;
+    shape.width = EM;
+    shape.height = EM;
+    shape.fill = true;
+    shape.stroke = 0.;
+    shape.color = if mono {
+        "#242424".into()
+    } else {
+        style.color.clone()
+    };
+    shape.contours = contours;
+    let artwork = Artwork {
+        shapes: vec![shape],
+        advance: glyph.artwork.advance,
+    };
+    crate::ai::validate_candidate(&artwork)?;
+    Ok(Generated {
+        artwork,
+        sources: vec![source(bytes, name)],
+        note: format!(
+            "글자 형태를 보존해 {} 스타일로 만들었어요.{}",
+            match style.family.as_str() {
+                "serif" => "명조",
+                "handwritten" => "손글씨",
+                _ => "고딕",
+            },
+            if fallback {
+                " 이 문자는 손글씨 자형이 없어 고딕 자형을 사용했어요."
+            } else {
+                ""
+            }
+        ),
+    })
+}
+
+struct Outlined {
+    contours: Vec<Vec<[f64; 2]>>,
+    bytes: &'static [u8],
+    name: &'static str,
+    fallback: bool,
+}
+
+fn contour_bounds(contours: &[Vec<[f64; 2]>]) -> [f64; 4] {
+    contours.iter().flatten().fold(
+        [
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::NEG_INFINITY,
+        ],
+        |b, p| {
+            [
+                b[0].min(p[0]),
+                b[1].min(p[1]),
+                b[2].max(p[0]),
+                b[3].max(p[1]),
+            ]
+        },
+    )
+}
+
+/// Numeric proportions of the exact text, without rasterizing or reading user artwork.
+/// These are style references, not a box the generated glyph must fill.
+pub fn natural_reference(glyph: &Glyph) -> Option<[f64; 4]> {
+    if !is_text(glyph) {
+        return None;
+    }
+    let outlined = outline(glyph, &Style::default()).ok()?;
+    Some(contour_bounds(&outlined.contours))
+}
+
+fn outline(glyph: &Glyph, style: &Style) -> Result<Outlined, String> {
     let (mut bytes, mut name) = match style.family.as_str() {
         "serif" => (SERIF, "Noto Serif CJK"),
         "handwritten" => (HAND, "Single Day"),
@@ -360,64 +454,10 @@ pub fn generate(glyph: &Glyph, style: &Style, mono: bool) -> Result<Generated, S
             .collect();
         final_contours.push(rounded(&points, style.roundness as f64 * 0.09));
     }
-    // Fit only horizontal overflow; anchor visible ink at one shared left sidebearing.
-    // The selected advance is kept, so the canvas and exported font use the same width.
-    let lo = final_contours
-        .iter()
-        .flatten()
-        .map(|p| p[0])
-        .fold(f64::INFINITY, f64::min);
-    let hi = final_contours
-        .iter()
-        .flatten()
-        .map(|p| p[0])
-        .fold(f64::NEG_INFINITY, f64::max);
-    let [left, right] = glyph_layout::horizontal_bounds(glyph.artwork.advance);
-    let fit = ((right - left) / (hi - lo)).min(1.);
-    for p in final_contours.iter_mut().flatten() {
-        p[0] = left + (p[0] - lo) * fit;
-    }
-    check(
-        final_contours
-            .iter()
-            .flatten()
-            .all(|p| (0.0..=DESCENT_BOTTOM + 0.01).contains(&p[1])),
-        "글자의 위아래 획이 작업 영역을 벗어나요. 다른 글꼴 스타일을 선택해 주세요.",
-    )?;
-    let mut shape = new_shape("outline");
-    shape.name = format!("{} · 글자 형태", glyph.text);
-    shape.x = 0.;
-    shape.y = 0.;
-    shape.width = 1000.;
-    shape.height = 1000.;
-    shape.fill = true;
-    shape.stroke = 0.;
-    shape.color = if mono {
-        "#242424".into()
-    } else {
-        style.color.clone()
-    };
-    shape.contours = final_contours;
-    let artwork = Artwork {
-        shapes: vec![shape],
-        advance: glyph.artwork.advance,
-    };
-    crate::ai::validate_candidate(&artwork)?;
-    Ok(Generated {
-        artwork,
-        sources: vec![source(bytes, name)],
-        note: format!(
-            "글자 형태를 보존해 {} 스타일로 만들었어요.{}",
-            match style.family.as_str() {
-                "serif" => "명조",
-                "handwritten" => "손글씨",
-                _ => "고딕",
-            },
-            if fallback {
-                " 이 문자는 손글씨 자형이 없어 고딕 자형을 사용했어요."
-            } else {
-                ""
-            }
-        ),
+    Ok(Outlined {
+        contours: final_contours,
+        bytes,
+        name,
+        fallback,
     })
 }

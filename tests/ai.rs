@@ -76,7 +76,7 @@ fn both_provider_contracts_preserve_exact_target() {
         assert!(req.contains("reference"));
         assert!(req.contains("baselineY"));
         assert!(req.contains("descenderBottomY"));
-        assert!(req.contains("leftInkX"));
+        assert!(req.contains("leftInkLimitX"));
         assert!(req.contains("pixelsPerUnit"));
         assert!(req.contains("image/png"));
         assert!(req.contains(if provider == "openai" {
@@ -113,7 +113,7 @@ fn canvas_snapshot_preserves_color_on_white() {
 }
 
 #[test]
-fn both_providers_receive_layout_and_fresh_candidates_share_the_left_bearing() {
+fn both_providers_receive_natural_size_guidance_and_balance_fresh_candidates() {
     for provider in ["openai", "anthropic"] {
         let answer = r#"{"advance":1000,"shapes":[{"type":"path","points":[[350,400],[550,800],[460,920]],"stroke":20}]}"#;
         let (url, rx) = mock(provider, answer);
@@ -123,7 +123,8 @@ fn both_providers_receive_layout_and_fresh_candidates_share_the_left_bearing() {
         let b = doodle_core::glyph_layout::ink_bounds(&result)
             .unwrap()
             .unwrap();
-        assert!((b[0] - 80.).abs() < 0.01);
+        assert!((b[0] + b[2] - 700.).abs() < 0.01);
+        assert!((b[2] - b[0] - 220.).abs() < 0.01);
         assert!(b[3] > 800.);
         assert_eq!(result.shapes[0].points[2][1], 920.);
         assert_eq!(result.advance, 700.);
@@ -134,6 +135,11 @@ fn both_providers_receive_layout_and_fresh_candidates_share_the_left_bearing() {
         assert!(prompt.contains("\"descenderBottomY\":960.0"));
         assert!(prompt.contains("\"advance\":700.0"));
         assert!(prompt.contains("g/j/p/q/y"));
+        assert!(prompt.contains("\"centerX\":350.0"));
+        assert!(prompt.contains("\"limitsAreNotTargets\":true"));
+        assert!(prompt.contains("\"inkWidth\":"));
+        assert!(prompt.contains("Do not stretch, compress"));
+        assert!(!prompt.contains("fixed left sidebearing"));
         assert!(!request.contains("image/png"));
     }
 }
@@ -167,7 +173,13 @@ fn local_style_planner_receives_the_same_layout_contract() {
     let request = rx.recv().unwrap();
     assert!(request.contains("baselineY"));
     assert!(request.contains("descenderBottomY"));
-    assert!(request.contains("leftInkX"));
+    assert!(request.contains("leftInkLimitX"));
+    assert!(request.contains("naturalReference"));
+    assert!(request.contains("Always use width=100 and tracking=0"));
+    let b = doodle_core::glyph_layout::ink_bounds(&art)
+        .unwrap()
+        .unwrap();
+    assert!((b[0] + b[2] - 1000.).abs() < 0.01);
     assert!(request.contains("pixelsPerUnit"));
     assert!(request.contains("image/png"));
 }

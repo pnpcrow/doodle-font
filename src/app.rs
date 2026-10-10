@@ -1812,10 +1812,7 @@ impl Studio {
                                     c,
                                 );
                             }
-                            for x in [
-                                doodle_core::glyph_layout::horizontal_bounds(advance)[0],
-                                advance.min(1000.),
-                            ] {
+                            for x in doodle_core::glyph_layout::vertical_guides(advance) {
                                 painter.line_segment(
                                     [to_screen([x, 0.]), to_screen([x, 1000.])],
                                     Stroke::new(1_f32, Color32::from_rgb(161, 181, 156)),
