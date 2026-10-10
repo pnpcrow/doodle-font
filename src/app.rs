@@ -73,6 +73,11 @@ pub struct Studio {
     api_endpoint: String,
     api_model: String,
     api_key: String,
+    connections: doodle_core::ai_settings::Connections,
+    connections_path: PathBuf,
+    connections_pending: Option<Instant>,
+    connections_status: String,
+    connections_error: bool,
     ai_prompt: String,
     send_reference: bool,
     ai_color: bool,
@@ -113,6 +118,10 @@ pub struct Studio {
     qa_ai_send: Option<Rect>,
     #[cfg(feature = "ui-qa")]
     qa_decision_button: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_api_key: Option<Rect>,
+    #[cfg(feature = "ui-qa")]
+    qa_forget_key: Option<Rect>,
 }
 impl Studio {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -163,6 +172,14 @@ impl Studio {
                     .join("DoodleFont")
             });
         let save_path = root.join("project.json");
+        let connections_path = root.join("ai-connections.dat");
+        let (connections, connections_status, connections_error) =
+            match doodle_core::ai_settings::Connections::load(&connections_path) {
+                Ok(settings) => (settings, String::new(), false),
+                Err(error) => (Default::default(), error, true),
+            };
+        let profile = connections.profile(&connections.provider);
+        let api_key = connections.key(&connections.provider, &profile.endpoint);
         let (project, error) = if save_path.exists() {
             match storage::read(&save_path){Ok(p)=>(p,String::new()),Err(e)=>(new_project(),format!("{e} 원본 자동 저장 파일은 보존됩니다. 프로젝트 열기로 백업을 복구해 주세요."))}
         } else {
@@ -217,10 +234,15 @@ impl Studio {
             preview_size: 64.,
             preview_controls: true,
             actual_font: None,
-            api_provider: "local".into(),
-            api_endpoint: "https://api.openai.com/v1".into(),
-            api_model: String::new(),
-            api_key: String::new(),
+            api_provider: connections.provider.clone(),
+            api_endpoint: profile.endpoint,
+            api_model: profile.model,
+            api_key,
+            connections,
+            connections_path,
+            connections_pending: None,
+            connections_status,
+            connections_error,
             ai_prompt: "동글동글하고 따뜻한 손글씨. 부드러운 획.".into(),
             send_reference: false,
             ai_color: true,
@@ -262,6 +284,10 @@ impl Studio {
             qa_ai_send: None,
             #[cfg(feature = "ui-qa")]
             qa_decision_button: None,
+            #[cfg(feature = "ui-qa")]
+            qa_api_key: None,
+            #[cfg(feature = "ui-qa")]
+            qa_forget_key: None,
         };
         s.reindex();
         s.refresh_catalog();
@@ -2350,6 +2376,9 @@ impl Studio {
         if self.job.is_some() {
             return;
         }
+        if self.connections_pending.is_some() {
+            self.save_connections();
+        }
         if !self.ai_ready() {
             self.notify("AI 연결 화면에서 로컬 모델 또는 API를 먼저 준비해 주세요.");
             self.tab = 3;
@@ -2553,6 +2582,47 @@ impl Studio {
             }
         }
     }
+    fn connection_changed(&mut self) {
+        self.connections.remember(
+            &self.api_provider,
+            &self.api_endpoint,
+            &self.api_model,
+            &self.api_key,
+        );
+        self.connections_pending = Some(Instant::now());
+        self.connections_status = "연결 설정을 저장하는 중이에요…".into();
+        self.connections_error = false;
+    }
+    fn save_connections(&mut self) {
+        self.connections_pending = None;
+        match self.connections.save(&self.connections_path) {
+            Ok(()) => {
+                self.connections_status = "연결 설정 저장 완료 · 다음 실행에도 유지돼요".into();
+                self.connections_error = false;
+            }
+            Err(error) => {
+                self.connections_status = error;
+                self.connections_error = true;
+            }
+        }
+    }
+    fn select_ai_provider(&mut self, provider: &str) {
+        if self.api_provider == provider {
+            return;
+        }
+        self.connections.remember(
+            &self.api_provider,
+            &self.api_endpoint,
+            &self.api_model,
+            &self.api_key,
+        );
+        self.api_provider = provider.into();
+        let profile = self.connections.profile(provider);
+        self.api_key = self.connections.key(provider, &profile.endpoint);
+        self.api_endpoint = profile.endpoint;
+        self.api_model = profile.model;
+        self.connection_changed();
+    }
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         ui.add_space(12.);
         ui.label(
@@ -2568,8 +2638,11 @@ impl Studio {
         self.decision_options_ui(ui);
         ui.add_space(16.);
         ui.label(RichText::new("그림 분석·생성 AI").size(20.).strong());
-        egui::Frame::new().fill(Color32::from_rgb(255,254,250)).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{ui.selectable_value(&mut self.api_provider,"local".into(),"내장 로컬 AI");if ui.selectable_value(&mut self.api_provider,"openai".into(),"OpenAI 호환").clicked(){self.api_endpoint="https://api.openai.com/v1".into();}
-            if ui.selectable_value(&mut self.api_provider,"anthropic".into(),"Anthropic 호환").clicked(){self.api_endpoint="https://api.anthropic.com/v1".into();}});ui.add_space(16.);
+        egui::Frame::new().fill(Color32::from_rgb(255,254,250)).corner_radius(16).inner_margin(28).show(ui,|ui|{ui.set_max_width(740.);ui.horizontal(|ui|{
+            for (provider, label) in [("local", "내장 로컬 AI"), ("openai", "OpenAI 호환"), ("anthropic", "Anthropic 호환")] {
+                if ui.selectable_label(self.api_provider == provider, label).clicked() { self.select_ai_provider(provider); }
+            }
+        });ui.add_space(16.);
             if self.api_provider=="local" {
                 ui.label("Gemma 4 E2B · 그림 상담과 후보 생성");
                 chip(ui,if self.local_installed {"로컬 모델 설치 완료 · 인터넷 없이 사용 가능"} else {"로컬 AI 설치가 필요해요"});
@@ -2585,7 +2658,35 @@ impl Studio {
                 if !self.install_error.is_empty(){ui.colored_label(ACCENT,&self.install_error);}
                 chip(ui,"필요할 때 Gemma 4를 읽고 작업이 끝나면 메모리를 반환합니다.");
             } else {
-            egui::Grid::new("api-info").num_columns(2).spacing([20.,16.]).show(ui,|ui|{ui.label("API 기본 주소");ui.add(egui::TextEdit::singleline(&mut self.api_endpoint).desired_width(460.));ui.end_row();ui.label("모델 이름");ui.add(egui::TextEdit::singleline(&mut self.api_model).hint_text("연결할 제공자의 정확한 모델 ID"));ui.end_row();ui.label("API 키");ui.add(egui::TextEdit::singleline(&mut self.api_key).password(true).hint_text("앱을 닫으면 지워져요"));ui.end_row();});ui.add_space(12.);chip(ui,"키는 메모리에만 보관합니다. 프로젝트·로그·자동 저장에 포함하지 않아요.");}
+            let mut changed = false;
+            egui::Grid::new("api-info").num_columns(2).spacing([20.,16.]).show(ui,|ui|{
+                ui.label("API 기본 주소");
+                if ui.add(egui::TextEdit::singleline(&mut self.api_endpoint).desired_width(460.)).changed() {
+                    self.api_key = self.connections.key(&self.api_provider, &self.api_endpoint);
+                    changed = true;
+                }
+                ui.end_row();ui.label("모델 이름");
+                changed |= ui.add(egui::TextEdit::singleline(&mut self.api_model).hint_text("연결할 제공자의 정확한 모델 ID")).changed();
+                ui.end_row();ui.label("API 키");
+                let key_input = ui.add(egui::TextEdit::singleline(&mut self.api_key).password(true).hint_text("다음 실행에도 유지할 API 키"));
+                #[cfg(feature="ui-qa")] { self.qa_api_key = Some(key_input.rect); }
+                changed |= key_input.changed();
+                ui.end_row();
+            });
+            if changed { self.connection_changed(); }
+            ui.add_space(12.);
+            ui.horizontal(|ui| {
+                if ui.button("연결 설정 저장").clicked() { self.connection_changed(); self.save_connections(); }
+                let forget = ui.add_enabled(!self.api_key.is_empty(), egui::Button::new("이 주소의 키 삭제"));
+                #[cfg(feature="ui-qa")] { self.qa_forget_key = Some(forget.rect); }
+                if forget.clicked() { self.api_key.clear(); self.connection_changed(); self.save_connections(); }
+            });
+            chip(ui,"자동 저장 · 비밀번호·지문 입력 없이 다음 실행에 복원합니다.");
+            ui.label(RichText::new("키는 Windows 계정으로 암호화하며 제공자·주소별로 보관해요. 프로젝트에는 포함하지 않습니다.").size(12.).color(MUTED));
+            }
+            if !self.connections_status.is_empty() {
+                ui.colored_label(if self.connections_error { ACCENT } else { MUTED }, &self.connections_status);
+            }
             ui.add_space(20.);ui.label("원하는 그림 스타일");ui.add(egui::TextEdit::multiline(&mut self.ai_prompt).desired_width(680.).desired_rows(3));ui.checkbox(&mut self.ai_color,"컬러 그림 제안");ui.checkbox(&mut self.send_reference,"현재 드로잉 영역의 PNG 이미지와 벡터를 API에 전송");chip(ui,"로컬 AI는 그림을 PC에서 읽습니다. API에서는 체크한 경우에만 그림을 전송합니다.");ui.add_space(18.);if ui.add_enabled(self.job.is_none(),egui::Button::new("선택한 글리프의 후보 생성").fill(Color32::from_rgb(245,220,200))).clicked(){self.generate_ai(ui.ctx());}ui.add_space(8.);ui.label(RichText::new("후보는 검토 후 직접 채택합니다. 잠금·의도적 빈칸·제어 문자는 보호됩니다.").size(12.).color(MUTED));
         });
         ui.add_space(22.);
@@ -2859,6 +2960,33 @@ impl eframe::App for Studio {
     #[cfg(feature = "ui-qa")]
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
         let qa_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+        if qa_view.starts_with("connections-") {
+            input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            let frame = ctx.cumulative_frame_nr();
+            let rect = match qa_view.as_str() {
+                "connections-write" => self.qa_api_key,
+                "connections-delete" => self.qa_forget_key,
+                _ => None,
+            };
+            if let Some(rect) = rect.filter(|_| frame == 3 || frame == 4) {
+                let pos = rect.center();
+                input.events.push(egui::Event::PointerMoved(pos));
+                input.events.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: frame == 3,
+                    modifiers: Default::default(),
+                });
+            }
+            if qa_view == "connections-write" && frame == 5 {
+                input
+                    .events
+                    .push(egui::Event::Text("qa-persistence-key-only".into()));
+            }
+            return;
+        }
         if [
             "ai-candidate-live",
             "ai-typography-live",
@@ -3016,6 +3144,31 @@ impl eframe::App for Studio {
                         self.api_provider = "anthropic".into();
                         self.api_endpoint = "https://api.anthropic.com/v1".into();
                         self.decision_mode = doodle_core::needle::Mode::Off;
+                    }
+                    "connections-write" => {
+                        self.tab = 3;
+                        self.select_ai_provider("openai");
+                        self.api_endpoint = "https://example.invalid/v1".into();
+                        self.api_model = "qa-model".into();
+                        self.api_key.clear();
+                        self.connection_changed();
+                    }
+                    "connections-restored" | "connections-delete" | "connections-empty" => {
+                        self.tab = 3;
+                        assert_eq!(self.api_provider, "openai");
+                        assert_eq!(self.api_endpoint, "https://example.invalid/v1");
+                        assert_eq!(self.api_model, "qa-model");
+                        let deleted =
+                            std::env::var("DOODLE_QA_VIEW").as_deref() == Ok("connections-empty");
+                        assert_eq!(
+                            self.api_key,
+                            if deleted {
+                                ""
+                            } else {
+                                "qa-persistence-key-only"
+                            }
+                        );
+                        assert_eq!(self.ai_ready(), !deleted);
                     }
                     "decision-fast-live" | "decision-gemma-live" => {
                         self.tab = 3;
@@ -3261,7 +3414,36 @@ impl eframe::App for Studio {
             if install_flow && self.ai_started.elapsed() > Duration::from_secs(90) {
                 panic!("Install UI flow timed out: {}", self.install_error);
             }
-            if (ctx.cumulative_frame_nr() == 12 && !install_flow && !candidate_live)
+            let connection_view = std::env::var("DOODLE_QA_VIEW").unwrap_or_default();
+            let connection_flow = connection_view.starts_with("connections-");
+            let connection_ready = connection_flow
+                && ctx.cumulative_frame_nr() >= 12
+                && self.connections_pending.is_none();
+            if connection_flow && self.ai_started.elapsed() > Duration::from_secs(15) {
+                panic!("Connection persistence UI timed out");
+            }
+            if connection_ready {
+                assert!(!self.connections_error);
+                let deleted =
+                    ["connections-delete", "connections-empty"].contains(&connection_view.as_str());
+                let key = if deleted {
+                    ""
+                } else {
+                    "qa-persistence-key-only"
+                };
+                assert_eq!(self.api_key, key);
+                let restored =
+                    doodle_core::ai_settings::Connections::load(&self.connections_path).unwrap();
+                assert_eq!(restored.key("openai", "https://example.invalid/v1"), key);
+                assert!(!serde_json::to_string(&self.project)
+                    .unwrap()
+                    .contains("qa-persistence-key-only"));
+            }
+            if (ctx.cumulative_frame_nr() == 12
+                && !install_flow
+                && !candidate_live
+                && !connection_flow)
+                || connection_ready
                 || (candidate_live
                     && ctx.cumulative_frame_nr() > 12
                     && self.job.is_none()
@@ -3311,6 +3493,13 @@ impl eframe::App for Studio {
         }
         if self.dirty && self.last_edit.elapsed() > Duration::from_millis(900) {
             self.save();
+        }
+        if let Some(changed) = self.connections_pending {
+            if changed.elapsed() >= Duration::from_millis(600) {
+                self.save_connections();
+            } else {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
         }
         if self.dirty || self.job.is_some() {
             ctx.request_repaint_after(Duration::from_millis(300));
@@ -3405,6 +3594,9 @@ impl eframe::App for Studio {
         }
     }
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
+        if self.connections_pending.is_some() {
+            self.save_connections();
+        }
         if let Some(cancel) = &self.ai_cancel {
             cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }

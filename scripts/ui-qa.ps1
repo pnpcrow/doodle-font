@@ -1,4 +1,4 @@
-param([switch]$LocalAi, [switch]$DecisionAi)
+param([switch]$LocalAi, [switch]$DecisionAi, [switch]$ConnectionsOnly)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $repo
@@ -9,8 +9,11 @@ $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId"
 $views = @('editor','preview','templates','settings','export','hangul','ai-ready','ai-busy','ai-recover','interaction','ai-candidates','ai-candidate-accept','ai-candidate-invalid','ai-typography','decision-settings')
 if ($LocalAi) { $views += 'ai-candidate-live','ai-typography-live' }
 if ($DecisionAi) { $views += 'decision-fast-live','decision-gemma-live' }
+if ($ConnectionsOnly) { $views = @() }
+$views += 'connections-write','connections-restored','connections-delete','connections-empty'
 foreach ($viewName in $views) {
     $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-$viewName"
+    if ($viewName.StartsWith('connections-')) { $env:DOODLE_DATA_DIR = Join-Path $repo "artifacts\ui-qa-$runId-connections" }
     $env:DOODLE_QA_VIEW = $viewName
     $env:DOODLE_QA_OUTPUT = Join-Path $repo "artifacts\qa-$viewName.png"
     & '.\target\debug\doodle-font.exe'
@@ -18,5 +21,8 @@ foreach ($viewName in $views) {
     if (-not (Test-Path -LiteralPath $env:DOODLE_QA_OUTPUT)) { throw "Screenshot missing: $viewName" }
 }
 Remove-Item Env:\DOODLE_QA_VIEW,Env:\DOODLE_QA_OUTPUT,Env:\DOODLE_DATA_DIR
-Write-Output 'Native UI QA passed, including drawing, AI candidate review/apply, invalid responses, undo/redo, original preservation, and disk save.'
-Write-Output 'Mock candidates verify UI behavior only. Live candidate screenshots also require a separate visual check of the requested glyph and style.'
+Write-Output "Native UI QA passed: $($views.Count) scenarios, including API key entry, automatic encryption, process restart, key deletion, and restart after deletion."
+if (-not $ConnectionsOnly) {
+    Write-Output 'Drawing, AI candidate review/apply, invalid responses, undo/redo, original preservation, and disk save also passed.'
+    Write-Output 'Mock candidates verify UI behavior only. Live candidate screenshots also require a separate visual check of the requested glyph and style.'
+}

@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod ai_install;
 pub mod ai_pipeline;
+pub mod ai_settings;
 pub mod document;
 pub mod font;
 pub mod local_ai;
